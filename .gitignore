@@ -1,3 +1,6 @@
+### JetBrains IDEs (GoLand, IntelliJ IDEA, etc.)
+.idea/
+
 ### VisualStudioCode template
 .vscode/*
 !.vscode/settings.json

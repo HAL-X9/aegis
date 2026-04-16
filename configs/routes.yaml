@@ -1,0 +1,19 @@
+version: routeconfig/v1
+kind: RouteConfig
+
+routes:
+  - name: api-health
+    match:
+      path_prefix: /api/v1/healthz
+      methods: [GET]
+    upstream:
+      host: api.internal
+      port: 8081
+
+  - name: orders-api
+    match:
+      path_prefix: /api/v1/orders
+      methods: [GET, POST]
+    upstream:
+      host: orders.internal
+      port: 8082

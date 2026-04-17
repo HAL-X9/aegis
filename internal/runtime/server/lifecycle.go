@@ -6,27 +6,16 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
-	"github.com/aegis/internal/runtime/config"
 )
 
-type Runtime struct {
-	config *config.Runtime
-	http   *http.Server
-}
-
-func NewRuntime(config *config.Runtime, http *http.Server) *Runtime {
-	return &Runtime{config: config, http: http}
-}
-
-func (s *Runtime) Start(ctx context.Context) error {
-	if s.http == nil {
+func (a *Application) Run(ctx context.Context) error {
+	if a.http == nil {
 		return fmt.Errorf("http server is nil")
 	}
 
 	listenErrCh := make(chan error, 1)
 	go func() {
-		err := s.http.ListenAndServe()
+		err := a.http.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			listenErrCh <- err
 			return
@@ -36,7 +25,10 @@ func (s *Runtime) Start(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		return s.Shutdown()
+		if err := a.shutdownHTTP(); err != nil {
+			return fmt.Errorf("http shutdown: %w", err)
+		}
+		return ctx.Err()
 
 	case err := <-listenErrCh:
 		if err != nil {
@@ -46,16 +38,21 @@ func (s *Runtime) Start(ctx context.Context) error {
 	}
 }
 
-func (s *Runtime) Shutdown() error {
-	if s.http == nil {
-		return nil
-	}
+func (a *Application) Close() error {
+	return a.shutdownHTTP()
+}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := s.http.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("http shutdown failed: %w", err)
-	}
-
-	return nil
+func (a *Application) shutdownHTTP() error {
+	var outErr error
+	a.shutdownOnce.Do(func() {
+		if a.http == nil {
+			return
+		}
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := a.http.Shutdown(shutdownCtx); err != nil {
+			outErr = fmt.Errorf("http shutdown failed: %w", err)
+		}
+	})
+	return outErr
 }

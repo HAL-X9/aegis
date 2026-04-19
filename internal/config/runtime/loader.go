@@ -1,13 +1,13 @@
-package config
+package runtimeconfig
 
 import (
 	"fmt"
 
-	"github.com/aegis/internal/config"
+	"github.com/aegis/internal/config/loader"
 )
 
-func LoadRuntimeConfig(path string) (*Runtime, error) {
-	cfg, err := config.ReadAndDecodeYaml[Runtime](path)
+func Load(path string) (*Runtime, error) {
+	cfg, err := loader.ReadAndDecodeYaml[Runtime](path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load runtime configuration from YAML: %w", err)
 	}

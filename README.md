@@ -58,10 +58,10 @@ go run ./cmd
 With the sample configuration, confirm that the HTTP server accepts connections (for example, from a second terminal):
 
 ```bash
-curl -i http://127.0.0.1:8080/
+curl -i http://127.0.0.1:8080/livez
 ```
 
-Until application routes are registered on the server mux, requests to arbitrary paths are expected to receive **`404 Not Found`** from the default handler. A successful TCP connection and an HTTP response from the process indicate that the runtime is listening as configured.
+Liveness responds on **`GET /livez`**. Other paths return **`404 Not Found`** until dataplane routes are registered. A successful TCP connection and an HTTP response from the process indicate that the listener is up as configured.
 
 For a non-HTTP check of the listening socket:
 

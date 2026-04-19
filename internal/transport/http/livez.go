@@ -3,15 +3,17 @@ package http
 import (
 	"io"
 	"net/http"
-
-	"github.com/aegis/internal/ports"
 )
 
-type Handler struct {
-	health ports.HealthService
+type LivenessChecker interface {
+	Liveness() error
 }
 
-func NewHandler(health ports.HealthService) *Handler {
+type Handler struct {
+	health LivenessChecker
+}
+
+func NewHandler(health LivenessChecker) *Handler {
 	return &Handler{health: health}
 }
 

@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+// Validate checks cfg for well-formed listen addresses, timeout ordering, and allowed enum values.
+// cfg must not be nil.
 func Validate(cfg *Runtime) error {
 	if err := validateHTTP(&cfg.HTTP); err != nil {
 		return fmt.Errorf("failed validate http config: %w", err)
@@ -18,6 +20,7 @@ func Validate(cfg *Runtime) error {
 	return nil
 }
 
+// validateHTTP enforces HTTP server field constraints used at listen time.
 func validateHTTP(cfg *HTTP) error {
 	if cfg == nil {
 		return fmt.Errorf("http: configuration is nil")
@@ -40,12 +43,13 @@ func validateHTTP(cfg *HTTP) error {
 	}
 
 	if cfg.MaxHeaderBytes < 0 {
-		return fmt.Errorf("max_header_bytes cannot be negatives")
+		return fmt.Errorf("max_header_bytes cannot be negative")
 	}
 
 	return nil
 }
 
+// validateLogging enforces logging level and format literals accepted by the logger wiring.
 func validateLogging(cfg *Logging) error {
 	if cfg == nil {
 		return fmt.Errorf("logging: configuration is nil")

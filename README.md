@@ -6,7 +6,6 @@ Aegis is an edge-oriented execution environment: declarative configuration defin
 
 The project is under active development; public interfaces and configuration schemas may evolve until an initial stable release.
 
----
 
 ## Quick start
 
@@ -31,7 +30,7 @@ This section describes the minimum path from a clean clone to a running process 
 3. Start the process with an explicit configuration path:
 
    ```bash
-   go run ./cmd -config configs/aegis.yaml
+   go runtime ./cmd -config configs/runtime.yaml
    ```
 
    The process binds to the address declared in the runtime file (`http.addr`; the sample configuration listens on **`:8080`**).
@@ -49,8 +48,8 @@ If the `-config` flag is omitted, the binary resolves the runtime file from the 
 Example:
 
 ```bash
-export AEGIS_RUNTIME_CONFIG_PATH=configs/aegis.yaml
-go run ./cmd
+export AEGIS_RUNTIME_CONFIG_PATH=configs/runtime.yaml
+go runtime ./cmd
 ```
 
 ### Verify the listener
@@ -74,8 +73,8 @@ lsof -nP -iTCP:8080 -sTCP:LISTEN
 For deployment outside ad-hoc development, build a static binary from the repository root and invoke it with the same configuration contract:
 
 ```bash
-go build -o aegis ./cmd
-./aegis -config /path/to/runtime.yaml
+go build -o runtime ./cmd
+./runtime -config /path/to/runtime.yaml
 ```
 
 Run the binary under your platform’s process supervisor or container entrypoint; ensure `AEGIS_RUNTIME_CONFIG_PATH` or `-config` is set consistently with your release artifact and configuration management practices.

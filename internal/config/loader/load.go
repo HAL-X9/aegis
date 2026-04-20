@@ -7,6 +7,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ReadAndDecodeYaml reads path and unmarshals its entire contents into a new T using YAML.
+// It performs no validation beyond syntax; callers must validate semantic invariants.
 func ReadAndDecodeYaml[T any](path string) (*T, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

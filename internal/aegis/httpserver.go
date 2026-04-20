@@ -1,4 +1,4 @@
-package app
+package aegis
 
 import (
 	"context"
@@ -11,20 +11,20 @@ import (
 
 const httpShutdownTimeout = 10 * time.Second
 
-// HTTPServer wraps net/http.Server lifecycle (listen + graceful shutdown).
-type HTTPServer struct {
+// httpServer wraps net/http.Server lifecycle (listen + graceful shutdown).
+type httpServer struct {
 	srv          *http.Server
 	shutdownOnce sync.Once
 }
 
-func NewHTTPServer(srv *http.Server) (*HTTPServer, error) {
+func newHTTPServer(srv *http.Server) (*httpServer, error) {
 	if srv == nil {
 		return nil, fmt.Errorf("http server is nil")
 	}
-	return &HTTPServer{srv: srv}, nil
+	return &httpServer{srv: srv}, nil
 }
 
-func (s *HTTPServer) Run(ctx context.Context) error {
+func (s *httpServer) Run(ctx context.Context) error {
 	if s.srv == nil {
 		return fmt.Errorf("http server is nil")
 	}
@@ -54,11 +54,11 @@ func (s *HTTPServer) Run(ctx context.Context) error {
 	}
 }
 
-func (s *HTTPServer) Close() error {
+func (s *httpServer) Close() error {
 	return s.shutdown()
 }
 
-func (s *HTTPServer) shutdown() error {
+func (s *httpServer) shutdown() error {
 	var outErr error
 	s.shutdownOnce.Do(func() {
 		if s.srv == nil {

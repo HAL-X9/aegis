@@ -5,6 +5,8 @@ import (
 	"os"
 )
 
+// ResolvePath returns cliPath when non-empty; otherwise it requires envKey and returns
+// the corresponding environment value. envKey must be non-empty when cliPath is empty.
 func ResolvePath(cliPath, envKey string) (string, error) {
 	if cliPath != "" {
 		return cliPath, nil

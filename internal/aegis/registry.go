@@ -1,4 +1,4 @@
-package app
+package aegis
 
 import (
 	"fmt"
@@ -24,9 +24,7 @@ func Bootstrap(cfg *runtimeconfig.Runtime) (*Dependencies, error) {
 
 	hsvc := health.NewHealth()
 	h := httptransport.NewHandler(hsvc)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /livez", h.Livez)
+	mux := httptransport.NewMux(h)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTP.Addr,

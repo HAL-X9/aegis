@@ -5,6 +5,9 @@ import "net/http"
 // NewMux registers HTTP routes for the public API and observability endpoints.
 func NewMux(h *Handler) *http.ServeMux {
 	mux := http.NewServeMux()
+
+	// control/observe endpoints
 	mux.HandleFunc("GET /livez", h.Livez)
+
 	return mux
 }

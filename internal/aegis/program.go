@@ -42,12 +42,12 @@ func New() (*Program, error) {
 		return nil, err
 	}
 
-	_, err = controlplane.Load(routesConfigFile)
+	aegisManifest, err := controlplane.Load(routesConfigFile)
 	if err != nil {
 		return nil, err
 	}
 
-	deps, err := Bootstrap(runtimeConfig)
+	deps, err := Bootstrap(runtimeConfig, aegisManifest)
 	if err != nil {
 		return nil, err
 	}

@@ -2,9 +2,8 @@ package router
 
 import "bytes"
 
-// PathIndex provides route lookup by request path bytes.
-type PathIndex interface {
-	Lookup(path []byte) []*RadixNodeCandidates
+type Inserter interface {
+	Insert(path string, candidate *RadixNodeCandidates)
 }
 
 // RadixNode stores a compressed path segment and links to child nodes.
@@ -25,7 +24,7 @@ type RadixTrie struct {
 
 // RadixNodeCandidates groups route candidates and their method mask.
 type RadixNodeCandidates struct {
-	Routes     *CompileRoute
+	Route      *CompiledRoute
 	MethodMask uint32
 }
 

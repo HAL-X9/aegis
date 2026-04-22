@@ -10,7 +10,10 @@ http:
     idle_timeout: 120s
   max_header_bytes: 1048576
 
-logging:
-  level: info
-  format: json
-
+observability:
+  logging:
+    level: info
+    format: json
+  tracing:
+    enabled: false
+    endpoint: "http://localhost:4318"

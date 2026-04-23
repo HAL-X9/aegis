@@ -2,18 +2,19 @@ package router
 
 import "time"
 
-type Decision uint8
-type MethodMask uint64
-
-// CompiledRoute is a normalized route used at match time.
+// CompiledRoute is an immutable route representation used during request matching.
 type CompiledRoute struct {
+	// PathPrefix defines a normalized path prefix used by the radix index.
 	PathPrefix string
-	MethodMask MethodMask
-	Upstream   string
-	Timeout    time.Duration
-	Retries    int
+	// Upstream identifies the target upstream cluster for matched requests.
+	Upstream string
+	// Timeout specifies the per-request upstream timeout.
+	Timeout time.Duration
+	// Retries defines the maximum retry attempts for upstream failures.
+	Retries int
 }
 
+// CompileManifest contains all routes produced by the compile phase.
 type CompileManifest struct {
 	Routes []CompiledRoute
 }

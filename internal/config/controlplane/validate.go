@@ -2,6 +2,7 @@ package controlplane
 
 import "fmt"
 
+/*
 var allowedHTTPMethods = map[string]struct{}{
 	"GET":     {},
 	"POST":    {},
@@ -11,6 +12,7 @@ var allowedHTTPMethods = map[string]struct{}{
 	"OPTIONS": {},
 	"HEAD":    {},
 }
+*/
 
 func Validate(cfg *AegisManifest) error {
 	if cfg == nil {

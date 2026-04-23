@@ -1,11 +1,11 @@
 package router
 
-// BuildRadixTrie builds a path index from route candidates.
-func BuildRadixTrie(routes []*RadixNodeCandidates) *RadixTrie {
+// BuildRadixTrie constructs a radix path index from compiled route candidates.
+func BuildRadixTrie(routes []*RouteIndexEntry) *RadixTrie {
 	trie := &RadixTrie{}
 
-	for _, r := range routes {
-		trie.Insert(r.Route.PathPrefix, r)
+	for _, route := range routes {
+		trie.Insert(route.Route.PathPrefix, route)
 	}
 
 	return trie

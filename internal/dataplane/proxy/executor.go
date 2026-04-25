@@ -20,5 +20,5 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// routes := executor.engine.Lookup([]byte(r.URL.Path))
+	// _ = executor.engine.Lookup([]byte(r.URL.Path))
 }

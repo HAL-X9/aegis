@@ -24,9 +24,9 @@ func BuildEngine(config *controlplane.AegisManifest) (*Engine, error) {
 
 	entries := make([]*RouteIndexEntry, 0, len(compiled.Routes))
 
-	for index := range compiled.Routes {
+	for i := range compiled.Routes {
 		entries = append(entries, &RouteIndexEntry{
-			Route: &compiled.Routes[index],
+			Route: &compiled.Routes[i],
 		})
 	}
 

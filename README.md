@@ -13,9 +13,9 @@ This section describes the minimum path from a clean clone to a running process 
 
 ### Prerequisites
 
-| Requirement | Notes |
-| --- | --- |
-| Go | Version **1.26.1** or newer (see `go.mod`). |
+| Requirement | Notes                                                                               |
+| --- |-------------------------------------------------------------------------------------|
+| Go | Version **1.26.0** or newer (see `go.mod`).                                         |
 | Runtime configuration | A valid YAML file conforming to the runtime schema (example: `configs/aegis.yaml`). |
 
 ### Run (local development)

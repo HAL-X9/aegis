@@ -14,7 +14,7 @@ type CompiledRoute struct {
 	Retries int
 }
 
-// CompileManifest contains all routes produced by the compile phase.
-type CompileManifest struct {
+// CompiledManifest contains all routes produced by the compile phase.
+type CompiledManifest struct {
 	Routes []CompiledRoute
 }

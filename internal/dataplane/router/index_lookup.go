@@ -2,11 +2,6 @@ package router
 
 import "bytes"
 
-// RouteIndex provides route lookup by request path bytes.
-type RouteIndex interface {
-	Lookup(path []byte) []*RouteIndexEntry
-}
-
 // Lookup resolves compiled routes for the provided request path.
 // The method returns all candidates that match the path shape; method-based
 // filtering is expected to be applied by the caller or downstream stage.

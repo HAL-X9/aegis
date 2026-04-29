@@ -7,11 +7,12 @@ import (
 )
 
 type Executor struct {
-	engine *router.Engine
+	engine    *router.Engine
+	transport http.RoundTripper
 }
 
-func NewExecutor(engine *router.Engine) *Executor {
-	return &Executor{engine: engine}
+func NewExecutor(engine *router.Engine, transport http.RoundTripper) *Executor {
+	return &Executor{engine: engine, transport: transport}
 }
 
 func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -20,5 +21,12 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// _ = executor.engine.Lookup([]byte(r.URL.Path))
+	candidates := executor.engine.Lookup([]byte(r.URL.Path))
+	if len(candidates) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+
+	// route := candidates[0].Route
+
 }

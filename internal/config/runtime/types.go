@@ -23,6 +23,17 @@ type Timeouts struct {
 	IdleTimeout       time.Duration `yaml:"idle_timeout"`
 }
 
+// UpstreamTransport configures outbound HTTP transport behavior including connection pooling limits and network timeouts for upstream service communication.
+type UpstreamTransport struct {
+	MaxIdleConns          int           `yaml:"max_idle_conns"`
+	MaxIdleConnsPerHost   int           `yaml:"max_idle_conns_per_host"`
+	MaxConnsPerHost       int           `yaml:"max_conns_per_host"`
+	DialTimeout           time.Duration `yaml:"dial_timeout"`
+	TLSHandshakeTimeout   time.Duration `yaml:"tls_handshake_timeout"`
+	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
+	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
+}
+
 // Logging selects structured logger level and encoding for process output.
 type Logging struct {
 	Level  string `yaml:"level"`
@@ -31,6 +42,7 @@ type Logging struct {
 
 // Runtime is the unmarshaled root of the runtime YAML document; field tags match on-disk layout.
 type Runtime struct {
-	HTTP    HTTP    `yaml:"http"`
-	Logging Logging `yaml:"logging"`
+	HTTP              HTTP              `yaml:"http"`
+	UpstreamTransport UpstreamTransport `yaml:"upstream_transport"`
+	Logging           Logging           `yaml:"logging"`
 }

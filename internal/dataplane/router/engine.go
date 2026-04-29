@@ -36,3 +36,12 @@ func BuildEngine(config *controlplane.AegisManifest) (*Engine, error) {
 
 	return engine, nil
 }
+
+// Lookup returns route candidates that match the provided request path.
+// It returns nil when called on a nil engine or with a nil path.
+func (engine *Engine) Lookup(path []byte) []*RouteIndexEntry {
+	if engine == nil || path == nil {
+		return nil
+	}
+	return engine.trie.Lookup(path)
+}

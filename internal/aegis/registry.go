@@ -9,7 +9,6 @@ import (
 	"github.com/aegis/internal/dataplane/proxy"
 	"github.com/aegis/internal/dataplane/router"
 	"github.com/aegis/internal/observe/health"
-	httptransport "github.com/aegis/internal/transport/http"
 )
 
 // Dependencies is the constructed object graph for this process (explicit, no container).
@@ -30,19 +29,23 @@ func Bootstrap(cfg *runtimeconfig.Runtime, controlPlane *controlplane.AegisManif
 	}
 
 	hsvc := health.NewHealth()
-	h := httptransport.NewHandler(hsvc)
+	// h := httptransport.NewHandler(hsvc)
+	transport := newUpstreamTransport(&cfg.UpstreamTransport)
 
 	engine, err := router.BuildEngine(controlPlane)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build route engine: %w", err)
 	}
 
-	_ = proxy.NewExecutor(engine)
-	mux := httptransport.NewMux(h)
+	executor := proxy.NewExecutor(engine, transport)
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		executor.ServeHTTP(w, r)
+	})
 
 	srv := &http.Server{
 		Addr:              cfg.HTTP.Addr,
-		Handler:           mux,
+		Handler:           handler,
 		ReadTimeout:       cfg.HTTP.Timeouts.ReadTimeout,
 		ReadHeaderTimeout: cfg.HTTP.Timeouts.ReadHeaderTimeout,
 		WriteTimeout:      cfg.HTTP.Timeouts.WriteTimeout,

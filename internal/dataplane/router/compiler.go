@@ -13,7 +13,14 @@ func Compile(cfg *controlplane.AegisManifest) (*CompiledManifest, error) {
 		return nil, fmt.Errorf("compile routing configuration: manifest is nil")
 	}
 
-	_ = make([]CompiledRoute, 0, len(cfg.Routes))
+	compiledRoute := make([]CompiledRoute, 0, len(cfg.Routes))
+	for _, route := range cfg.Routes {
+		compiledRoute = append(compiledRoute, CompiledRoute{
+			PathPrefix: route.Match.PathPrefix,
+			Upstream:   route.Upstream.Host,
+		})
+	}
+
 	// TODO: BitMash for Method and Header Predicates
 
 	/*
@@ -22,5 +29,5 @@ func Compile(cfg *controlplane.AegisManifest) (*CompiledManifest, error) {
 		})
 	*/
 
-	return nil, nil
+	return &CompiledManifest{Routes: compiledRoute}, nil
 }

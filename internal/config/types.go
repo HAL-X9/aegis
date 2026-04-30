@@ -1,6 +1,6 @@
-// Package runtimeconfig defines the process-local runtime settings document (listeners,
+// Package app defines the process-local app settings document (listeners,
 // timeouts, logging). It is distinct from gateway routing and control-plane policy data.
-package runtimeconfig
+package config
 
 import (
 	"crypto/tls"
@@ -45,7 +45,7 @@ type Logging struct {
 	Format string `yaml:"format"`
 }
 
-// Runtime is the unmarshaled root of the runtime YAML document; field tags match on-disk layout.
+// Runtime is the unmarshaled root of the app YAML document; field tags match on-disk layout.
 type Runtime struct {
 	HTTP              HTTP              `yaml:"http"`
 	UpstreamTransport UpstreamTransport `yaml:"upstream_transport"`

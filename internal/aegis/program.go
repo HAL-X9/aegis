@@ -5,16 +5,15 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/aegis/internal/config/loader"
-	runtimeconfig "github.com/aegis/internal/config/runtime"
-	controlloader "github.com/aegis/internal/controlplane/loader"
+	"github.com/aegis/internal/config"
+	"github.com/aegis/internal/controlplane/loader"
 )
 
 var runtimeConfigPath string
 var routesConfigPath string
 
 func init() {
-	flag.StringVar(&runtimeConfigPath, "config", "", "path to runtime config (overrides env)")
+	flag.StringVar(&runtimeConfigPath, "config", "", "path to app config (overrides env)")
 	flag.StringVar(&routesConfigPath, "routes", "", "path to routes config (overrides env)")
 }
 
@@ -23,26 +22,26 @@ type Program struct {
 	http *httpServer
 }
 
-// New parses flags, loads runtime configuration, bootstraps dependencies, and returns a Program.
+// New parses flags, loads app configuration, bootstraps dependencies, and returns a Program.
 func New() (*Program, error) {
 	flag.Parse()
 
-	runtimeConfigFile, err := loader.ResolvePath(runtimeConfigPath, loader.EnvRuntimeConfigPath)
+	runtimeConfigFile, err := config.ResolvePath(runtimeConfigPath, config.EnvRuntimeConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("resolve configuration path: %w", err)
 	}
 
-	runtimeConfig, err := runtimeconfig.Load(runtimeConfigFile)
+	runtimeConfig, err := config.Load(runtimeConfigFile)
 	if err != nil {
 		return nil, err
 	}
 
-	routesConfigFile, err := loader.ResolvePath(routesConfigPath, loader.EnvRoutesConfigPath)
+	routesConfigFile, err := config.ResolvePath(routesConfigPath, config.EnvRoutesConfigPath)
 	if err != nil {
 		return nil, err
 	}
 
-	aegisManifest, err := controlloader.Load(routesConfigFile)
+	aegisManifest, err := loader.Load(routesConfigFile)
 	if err != nil {
 		return nil, err
 	}

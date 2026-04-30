@@ -5,15 +5,15 @@ import (
 	"net/http"
 	"time"
 
-	runtimeconfig "github.com/aegis/internal/config/runtime"
+	"github.com/aegis/internal/config"
 )
 
 // newUpstreamTransport builds an http.Transport for outbound requests using
 // configured connection limits and network timeouts; the transport is intended
 // to be reused across clients.
-func newUpstreamTransport(cfg *runtimeconfig.UpstreamTransport) *http.Transport {
+func newUpstreamTransport(cfg *config.UpstreamTransport) *http.Transport {
 	if cfg == nil {
-		cfg = &runtimeconfig.UpstreamTransport{}
+		cfg = &config.UpstreamTransport{}
 	}
 
 	return &http.Transport{

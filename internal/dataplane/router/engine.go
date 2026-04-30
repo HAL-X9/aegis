@@ -12,7 +12,7 @@ type Engine struct {
 	trie *RadixTrie
 }
 
-// BuildEngine compiles routing configuration and prepares runtime lookup
+// BuildEngine compiles routing configuration and prepares app lookup
 // structures used by the dataplane.
 func BuildEngine(config *model.GatewayConfig) (*Engine, error) {
 	compiled, err := compiler.Compile(config)

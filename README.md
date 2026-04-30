@@ -1,6 +1,6 @@
 # Aegis
 
-**One runtime for routing, policy, proxy, and observability.**
+**Gateway — one runtime for routing, policy, proxy, and observability.**
 
 Aegis is an edge-oriented execution environment: declarative configuration defines how inbound traffic is matched, authorized or constrained, forwarded to upstream services, and observed. The same binary is intended to run on bare metal, in containers, and in orchestrated environments without changing the core semantics of routing, policy evaluation, and proxy behavior.
 
@@ -30,7 +30,7 @@ This section describes the minimum path from a clean clone to a running process 
 3. Start the process with an explicit configuration path:
 
    ```bash
-   go runtime ./cmd -config configs/runtime.yaml
+   go app ./cmd -config configs/app.yaml
    ```
 
    The process binds to the address declared in the runtime file (`http.addr`; the sample configuration listens on **`:8080`**).
@@ -48,8 +48,8 @@ If the `-config` flag is omitted, the binary resolves the runtime file from the 
 Example:
 
 ```bash
-export AEGIS_RUNTIME_CONFIG_PATH=configs/runtime.yaml
-go runtime ./cmd
+export AEGIS_RUNTIME_CONFIG_PATH=configs/app.yaml
+go app ./cmd
 ```
 
 ### Verify the listener
@@ -73,8 +73,8 @@ lsof -nP -iTCP:8080 -sTCP:LISTEN
 For deployment outside ad-hoc development, build a static binary from the repository root and invoke it with the same configuration contract:
 
 ```bash
-go build -o runtime ./cmd
-./runtime -config /path/to/runtime.yaml
+go build -o app ./cmd
+./app -config /path/to/app.yaml
 ```
 
 Run the binary under your platform’s process supervisor or container entrypoint; ensure `AEGIS_RUNTIME_CONFIG_PATH` or `-config` is set consistently with your release artifact and configuration management practices.

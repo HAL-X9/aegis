@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	runtimeconfig "github.com/aegis/internal/config/runtime"
+	"github.com/aegis/internal/config"
 	"github.com/aegis/internal/controlplane/model"
 	"github.com/aegis/internal/dataplane/proxy"
 	"github.com/aegis/internal/dataplane/router"
@@ -13,16 +13,16 @@ import (
 
 // Dependencies is the constructed object graph for this process (explicit, no container).
 type Dependencies struct {
-	Runtime *runtimeconfig.Runtime
+	Runtime *config.Runtime
 	Health  *health.Health
 	HTTP    *http.Server
 	Engine  *router.Engine
 }
 
 // Bootstrap wires configuration into concrete implementations. It does not start listeners.
-func Bootstrap(cfg *runtimeconfig.Runtime, controlPlane *model.GatewayConfig) (*Dependencies, error) {
+func Bootstrap(cfg *config.Runtime, controlPlane *model.GatewayConfig) (*Dependencies, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("runtime config is nil")
+		return nil, fmt.Errorf("app config is nil")
 	}
 	if controlPlane == nil {
 		return nil, fmt.Errorf("controlplane manifest is nil")
@@ -44,7 +44,7 @@ func Bootstrap(cfg *runtimeconfig.Runtime, controlPlane *model.GatewayConfig) (*
 		executor.ServeHTTP(w, r)
 	})
 
-	// Public HTTP server with runtime-configured limits and timeouts.
+	// Public HTTP server with app-configured limits and timeouts.
 	srv := &http.Server{
 		Addr:              cfg.HTTP.Addr,
 		Handler:           handler,

@@ -23,6 +23,6 @@ func main() {
 	}()
 
 	if err = p.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		log.Fatalf("runtime: %v", err)
+		log.Fatalf("app: %v", err)
 	}
 }

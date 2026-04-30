@@ -1,4 +1,4 @@
-package controlplane
+package model
 
 // Route binds request matching criteria to a single upstream. Name is a stable
 // identifier for logs, metrics, and diagnostics.
@@ -22,8 +22,8 @@ type Upstream struct {
 	Port int    `yaml:"port"`
 }
 
-// AegisManifest is the unmarshaled root of the gateway control-plane document.
+// GatewayConfig is the unmarshaled root of the gateway control-plane document.
 // Field tags define the on-disk YAML layout; callers must validate before use.
-type AegisManifest struct {
+type GatewayConfig struct {
 	Routes []Route `yaml:"routes"`
 }

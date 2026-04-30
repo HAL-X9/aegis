@@ -1,6 +1,10 @@
 package router
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/aegis/internal/controlplane/compiler"
+)
 
 // RadixNode represents a single trie node in the radix index.
 // The node stores fixed-segment edges in children and dedicated edges for
@@ -27,7 +31,7 @@ type RadixTrie struct {
 
 // RouteIndexEntry groups route candidates and their method mask.
 type RouteIndexEntry struct {
-	Route *CompiledRoute
+	Route *compiler.CompiledRoute
 
 	/*
 		TODO:

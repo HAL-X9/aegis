@@ -13,7 +13,11 @@ func Validate(cfg *Runtime) error {
 		return fmt.Errorf("failed validate http config: %w", err)
 	}
 
-	if err := validateLogging(&cfg.Logging); err != nil {
+	if err := validateUpstreamTransport(&cfg.UpstreamTransport); err != nil {
+		return fmt.Errorf("failed validate upstream transport config: %w", err)
+	}
+
+	if err := validateLogging(&cfg.Observability.Logging); err != nil {
 		return fmt.Errorf("failed validate logging config: %w", err)
 	}
 
@@ -44,6 +48,27 @@ func validateHTTP(cfg *HTTP) error {
 
 	if cfg.MaxHeaderBytes < 0 {
 		return fmt.Errorf("max_header_bytes cannot be negative")
+	}
+
+	return nil
+}
+
+// validateUpstreamTransport enforces non-negative limits and internal consistency of connection pool settings for outbound HTTP transport.
+func validateUpstreamTransport(cfg *UpstreamTransport) error {
+	if cfg.MaxIdleConns < 0 {
+		return fmt.Errorf("max_idle_conns must be >= 0")
+	}
+
+	if cfg.MaxIdleConnsPerHost < 0 {
+		return fmt.Errorf("max_idle_conns_per_host must be >= 0")
+	}
+
+	if cfg.MaxConnsPerHost < 0 {
+		return fmt.Errorf("max_conns_per_host must be >= 0")
+	}
+
+	if cfg.MaxConnsPerHost > 0 && cfg.MaxIdleConnsPerHost > cfg.MaxConnsPerHost {
+		return fmt.Errorf("max_idle_conns_per_host cannot exceed max_conns_per_host")
 	}
 
 	return nil

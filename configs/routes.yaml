@@ -2,17 +2,17 @@ version: routeconfig/v1
 kind: RouteConfig
 
 routes:
-  - name: api-health
+  - name: model-health
     match:
-      path_prefix: /api/v1/healthz
+      path_prefix: /model/v1/healthz
       methods: [GET]
     upstream:
-      host: api.internal
+      host: model.internal
       port: 8081
 
-  - name: orders-api
+  - name: orders-model
     match:
-      path_prefix: /api/v1/orders
+      path_prefix: /model/v1/orders
       methods: [GET, POST]
     upstream:
       host: orders.internal

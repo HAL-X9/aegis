@@ -5,9 +5,9 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/aegis/internal/config/controlplane"
 	"github.com/aegis/internal/config/loader"
 	runtimeconfig "github.com/aegis/internal/config/runtime"
+	controlloader "github.com/aegis/internal/controlplane/loader"
 )
 
 var runtimeConfigPath string
@@ -42,7 +42,7 @@ func New() (*Program, error) {
 		return nil, err
 	}
 
-	aegisManifest, err := controlplane.Load(routesConfigFile)
+	aegisManifest, err := controlloader.Load(routesConfigFile)
 	if err != nil {
 		return nil, err
 	}

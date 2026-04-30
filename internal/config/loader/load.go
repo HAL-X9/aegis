@@ -1,14 +1,16 @@
 package loader
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 
 	"gopkg.in/yaml.v3"
 )
 
-// ReadAndDecodeYaml reads path and unmarshals its entire contents into a new T using YAML.
-// It performs no validation beyond syntax; callers must validate semantic invariants.
+// ReadAndDecodeYaml loads YAML from path and decodes it into T using yaml.v3 Decoder in strict mode.
+// Unknown fields are treated as errors (KnownFields=true).
+// Only structural decoding is performed; semantic validation is delegated to callers.
 func ReadAndDecodeYaml[T any](path string) (*T, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -16,8 +18,12 @@ func ReadAndDecodeYaml[T any](path string) (*T, error) {
 	}
 
 	var out T
-	if err = yaml.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("unmarshal config %s: %w", path, err)
+
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+
+	if err = dec.Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode config %s: %w", path, err)
 	}
 
 	return &out, nil

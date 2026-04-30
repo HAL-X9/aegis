@@ -34,6 +34,11 @@ type UpstreamTransport struct {
 	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
 }
 
+// Observability defines process-level telemetry configuration, primarily structured logging, for operational visibility and diagnostics.
+type Observability struct {
+	Logging Logging `yaml:"logging"`
+}
+
 // Logging selects structured logger level and encoding for process output.
 type Logging struct {
 	Level  string `yaml:"level"`
@@ -44,5 +49,5 @@ type Logging struct {
 type Runtime struct {
 	HTTP              HTTP              `yaml:"http"`
 	UpstreamTransport UpstreamTransport `yaml:"upstream_transport"`
-	Logging           Logging           `yaml:"logging"`
+	Observability     Observability     `yaml:"observability"`
 }

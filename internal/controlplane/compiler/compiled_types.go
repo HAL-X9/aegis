@@ -1,4 +1,4 @@
-package router
+package compiler
 
 import "time"
 
@@ -14,7 +14,7 @@ type CompiledRoute struct {
 	Retries int
 }
 
-// CompiledManifest contains all routes produced by the compile phase.
-type CompiledManifest struct {
+// CompiledGatewayConfig contains all routes produced by the compile phase.
+type CompiledGatewayConfig struct {
 	Routes []CompiledRoute
 }

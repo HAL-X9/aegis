@@ -1,14 +1,14 @@
-package router
+package compiler
 
 import (
 	"fmt"
 
-	"github.com/aegis/internal/config/controlplane"
+	"github.com/aegis/internal/controlplane/model"
 )
 
 // Compile transforms control-plane configuration into a routing manifest that
 // is optimized for deterministic dataplane lookup.
-func Compile(cfg *controlplane.AegisManifest) (*CompiledManifest, error) {
+func Compile(cfg *model.GatewayConfig) (*CompiledGatewayConfig, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("compile routing configuration: manifest is nil")
 	}
@@ -29,5 +29,5 @@ func Compile(cfg *controlplane.AegisManifest) (*CompiledManifest, error) {
 		})
 	*/
 
-	return &CompiledManifest{Routes: compiledRoute}, nil
+	return &CompiledGatewayConfig{Routes: compiledRoute}, nil
 }

@@ -27,45 +27,49 @@ This section describes the minimum path from a clean clone to a running process 
    go mod download
    ```
 
-3. Start the process with an explicit configuration path:
+3. Start the process with explicit runtime and routes configuration paths:
 
    ```bash
-   go app ./cmd -config configs/app.yaml
+   go run ./cmd -config configs/aegis.yaml -routes configs/routes.yaml
    ```
 
-   The process binds to the address declared in the runtime file (`http.addr`; the sample configuration listens on **`:8080`**).
+   The process starts two listeners declared in the runtime file: public on **`:8080`** and system on **`127.0.0.1:18080`** in the sample configuration.
 
 #### Alternative: environment-based configuration
 
-If the `-config` flag is omitted, the binary resolves the runtime file from the environment variable `AEGIS_RUNTIME_CONFIG_PATH`. The flag takes precedence when both are set.
+If flags are omitted, the binary resolves paths from environment variables. CLI flags take precedence when both are set.
 
 | Input | Resolution order |
 | --- | --- |
 | `-config <path>` | Used as the runtime configuration path. |
 | `AEGIS_RUNTIME_CONFIG_PATH` | Used when `-config` is not provided. |
-| Neither set | The process exits at startup with a descriptive error. |
+| `-routes <path>` | Used as the routes manifest path. |
+| `AEGIS_ROUTES_CONFIG_PATH` | Used when `-routes` is not provided. |
+| Neither runtime nor routes source set | The process exits at startup with a descriptive error. |
 
 Example:
 
 ```bash
-export AEGIS_RUNTIME_CONFIG_PATH=configs/app.yaml
-go app ./cmd
+export AEGIS_RUNTIME_CONFIG_PATH=configs/aegis.yaml
+export AEGIS_ROUTES_CONFIG_PATH=configs/routes.yaml
+go run ./cmd
 ```
 
 ### Verify the listener
 
-With the sample configuration, confirm that the HTTP server accepts connections (for example, from a second terminal):
+With the sample configuration, verify the system listener liveness endpoint:
 
 ```bash
-curl -i http://127.0.0.1:8080/livez
+curl -i http://127.0.0.1:18080/livez
 ```
 
-Liveness responds on **`GET /livez`**. Other paths return **`404 Not Found`** until dataplane routes are registered. A successful TCP connection and an HTTP response from the process indicate that the listener is up as configured.
+Liveness responds on **`GET /livez`** from the system plane. Public traffic is served on **`:8080`** and forwarded through the dataplane using routes from `configs/routes.yaml`.
 
 For a non-HTTP check of the listening socket:
 
 ```bash
 lsof -nP -iTCP:8080 -sTCP:LISTEN
+lsof -nP -iTCP:18080 -sTCP:LISTEN
 ```
 
 ### Production-oriented execution
@@ -74,7 +78,7 @@ For deployment outside ad-hoc development, build a static binary from the reposi
 
 ```bash
 go build -o app ./cmd
-./app -config /path/to/app.yaml
+./app -config /path/to/aegis.yaml -routes /path/to/routes.yaml
 ```
 
-Run the binary under your platform’s process supervisor or container entrypoint; ensure `AEGIS_RUNTIME_CONFIG_PATH` or `-config` is set consistently with your release artifact and configuration management practices.
+Run the binary under your platform’s process supervisor or container entrypoint; ensure `AEGIS_RUNTIME_CONFIG_PATH`/`-config` and `AEGIS_ROUTES_CONFIG_PATH`/`-routes` are set consistently with your release artifact and configuration management practices.

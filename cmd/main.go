@@ -5,14 +5,14 @@ import (
 	"errors"
 	"log"
 
-	"github.com/aegis/internal/aegis"
+	"github.com/aegis/internal/app"
 )
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	p, err := aegis.New()
+	p, err := app.New()
 	if err != nil {
 		log.Fatalf("bootstrap: %v", err)
 	}

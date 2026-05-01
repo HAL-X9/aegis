@@ -1,14 +1,15 @@
-package aegis
+package app
 
 import (
 	"fmt"
 	"net/http"
 
-	"github.com/aegis/internal/admin"
 	"github.com/aegis/internal/config"
 	"github.com/aegis/internal/controlplane/model"
 	"github.com/aegis/internal/dataplane/proxy"
 	"github.com/aegis/internal/dataplane/router"
+	edgeadmin "github.com/aegis/internal/edge/admin"
+	edgepublic "github.com/aegis/internal/edge/public"
 	"github.com/aegis/internal/observe/health"
 )
 
@@ -41,18 +42,7 @@ func Bootstrap(cfg *config.Runtime, controlPlane *model.GatewayConfig) (*Depende
 
 	// ---- System plane (health, admin endpoints) -----------------------------
 
-	systemHandler := admin.NewSystemHandler(healthSvc).Handler()
-
-	systemHTTP := &http.Server{
-		Addr:              cfg.Listeners.System.Addr,
-		Handler:           systemHandler,
-		ReadTimeout:       cfg.Listeners.System.Timeouts.ReadTimeout,
-		ReadHeaderTimeout: cfg.Listeners.System.Timeouts.ReadHeaderTimeout,
-		WriteTimeout:      cfg.Listeners.System.Timeouts.WriteTimeout,
-		IdleTimeout:       cfg.Listeners.System.Timeouts.IdleTimeout,
-		TLSConfig:         cfg.Listeners.System.TLS,
-		MaxHeaderBytes:    cfg.Listeners.System.MaxHeaderBytes,
-	}
+	systemHTTP := edgeadmin.NewSystemServer(cfg, healthSvc)
 
 	// ---- Dataplane (routing + execution) ------------------------------------
 
@@ -66,18 +56,7 @@ func Bootstrap(cfg *config.Runtime, controlPlane *model.GatewayConfig) (*Depende
 
 	// ---- Public plane (user traffic) ----------------------------------------
 
-	publicHandler := http.HandlerFunc(executor.ServeHTTP)
-
-	publicHTTP := &http.Server{
-		Addr:              cfg.Listeners.Public.Addr,
-		Handler:           publicHandler,
-		ReadTimeout:       cfg.Listeners.Public.Timeouts.ReadTimeout,
-		ReadHeaderTimeout: cfg.Listeners.Public.Timeouts.ReadHeaderTimeout,
-		WriteTimeout:      cfg.Listeners.Public.Timeouts.WriteTimeout,
-		IdleTimeout:       cfg.Listeners.Public.Timeouts.IdleTimeout,
-		TLSConfig:         cfg.Listeners.Public.TLS,
-		MaxHeaderBytes:    cfg.Listeners.Public.MaxHeaderBytes,
-	}
+	publicHTTP := edgepublic.NewPublicServer(cfg, executor)
 
 	// ---- Assemble -----------------------------------------------------------
 

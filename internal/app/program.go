@@ -1,4 +1,4 @@
-package aegis
+package app
 
 import (
 	"context"
@@ -48,7 +48,7 @@ func New() (*Program, error) {
 
 	deps, err := Bootstrap(runtimeConfig, gatewayConfig)
 	if err != nil {
-		return nil, fmt.Errorf("aegis.bootstrap dependencies: %w", err)
+		return nil, fmt.Errorf("app.bootstrap dependencies: %w", err)
 	}
 
 	httpServers, err := newServerGroup(deps.PublicHTTP, deps.SystemHTTP, deps.Health)

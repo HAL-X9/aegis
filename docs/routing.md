@@ -20,15 +20,15 @@ This boundary is mandatory. Any direct trie access from `proxy` is considered an
 
 ## Roles by Package
 
-`router/compiler.go` owns semantic validation and normalization. It accepts control-plane input and returns canonical compiled routes. If a manifest is invalid, failure must happen here or immediately after, before the engine is exposed to traffic.
+`internal/controlplane/compiler` owns semantic validation and normalization. It accepts control-plane input and returns canonical compiled routes. If a manifest is invalid, failure must happen here or immediately after, before the engine is exposed to traffic.
 
-`router/index_build.go` and `router/index_insert.go` own index materialization. Their job is to take compiled routes and shape them for efficient lookup, including any precomputed metadata that can remove work from runtime.
+`internal/dataplane/router/index_build.go` and `internal/dataplane/router/index_insert.go` own index materialization. Their job is to take compiled routes and shape them for efficient lookup, including any precomputed metadata that can remove work from runtime.
 
-`router/index_lookup.go` owns path matching against the trie. It should return deterministic candidates and avoid avoidable allocations.
+`internal/dataplane/router/index_lookup.go` owns path matching against the trie. It should return deterministic candidates and avoid avoidable allocations.
 
-`router/engine.go` is the only public runtime façade. It contains immutable routing state and exposes a stable API (`Lookup`/`Match`) consumed by the proxy.
+`internal/dataplane/router/engine.go` is the runtime façade for routing state. It contains immutable lookup structures and exposes `Lookup` consumed by the proxy.
 
-`proxy/executor.go` orchestrates request execution. It must depend on `router.Engine` only, never on trie node types or insertion logic.
+`internal/dataplane/proxy/executor.go` orchestrates request execution. It must depend on `router.Engine` only, never on trie node types or insertion logic.
 
 ## Data Boundaries
 

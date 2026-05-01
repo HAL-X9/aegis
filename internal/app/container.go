@@ -2,7 +2,9 @@ package app
 
 import (
 	"fmt"
+	"net"
 	"net/http"
+	"time"
 
 	"github.com/aegis/internal/config"
 	"github.com/aegis/internal/controlplane/model"
@@ -13,8 +15,6 @@ import (
 	"github.com/aegis/internal/observe/health"
 )
 
-// Dependencies is the fully wired object graph for the process.
-// It contains only long-lived components (no ephemeral state).
 type Dependencies struct {
 	Config     *config.Runtime
 	PublicHTTP *http.Server
@@ -23,12 +23,7 @@ type Dependencies struct {
 	Engine     *router.Engine
 }
 
-// Bootstrap wires configuration into concrete implementations.
-// It does NOT start any listeners.
 func Bootstrap(cfg *config.Runtime, controlPlane *model.GatewayConfig) (*Dependencies, error) {
-
-	// ---- Validate input -----------------------------------------------------
-
 	if cfg == nil {
 		return nil, fmt.Errorf("app config is nil")
 	}
@@ -36,15 +31,8 @@ func Bootstrap(cfg *config.Runtime, controlPlane *model.GatewayConfig) (*Depende
 		return nil, fmt.Errorf("controlplane manifest is nil")
 	}
 
-	// ---- Core services ------------------------------------------------------
-
 	healthSvc := health.NewHealth()
-
-	// ---- System plane (health, admin endpoints) -----------------------------
-
 	systemHTTP := edgeadmin.NewSystemServer(cfg, healthSvc)
-
-	// ---- Dataplane (routing + execution) ------------------------------------
 
 	engine, err := router.BuildEngine(controlPlane)
 	if err != nil {
@@ -53,18 +41,34 @@ func Bootstrap(cfg *config.Runtime, controlPlane *model.GatewayConfig) (*Depende
 
 	upstreamTransport := newUpstreamTransport(&cfg.UpstreamTransport)
 	executor := proxy.NewExecutor(engine, upstreamTransport)
-
-	// ---- Public plane (user traffic) ----------------------------------------
-
 	publicHTTP := edgepublic.NewPublicServer(cfg, executor)
 
-	// ---- Assemble -----------------------------------------------------------
-
 	return &Dependencies{
-		Config:     cfg,
+		Config: cfg,
 		PublicHTTP: publicHTTP,
 		SystemHTTP: systemHTTP,
 		Health:     healthSvc,
 		Engine:     engine,
 	}, nil
+}
+
+func newUpstreamTransport(cfg *config.UpstreamTransport) *http.Transport {
+	if cfg == nil {
+		cfg = &config.UpstreamTransport{}
+	}
+
+	return &http.Transport{
+		MaxIdleConns:          cfg.MaxIdleConns,
+		MaxIdleConnsPerHost:   cfg.MaxIdleConnsPerHost,
+		MaxConnsPerHost:       cfg.MaxConnsPerHost,
+		IdleConnTimeout:       cfg.IdleConnTimeout,
+		TLSHandshakeTimeout:   cfg.TLSHandshakeTimeout,
+		ResponseHeaderTimeout: cfg.ResponseHeaderTimeout,
+		ExpectContinueTimeout: 1 * time.Second,
+		DialContext: (&net.Dialer{
+			Timeout:   cfg.DialTimeout,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2: true,
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/aegis/internal/config"
 	"github.com/aegis/internal/controlplane/loader"
@@ -17,13 +18,13 @@ func init() {
 	flag.StringVar(&routesConfigPath, "routes", "", "path to routes config (overrides env)")
 }
 
-// Program is the process composition root: configuration load, bootstrap, and HTTP lifecycle.
-type Program struct {
-	http *serverGroup
+// App is the process composition root: configuration load, bootstrap, and HTTP lifecycle.
+type App struct {
+	runtime *Runtime
 }
 
-// New parses flags, loads app configuration, bootstraps dependencies, and returns a Program.
-func New() (*Program, error) {
+// New parses flags, loads app configuration, bootstraps dependencies, and returns an App.
+func New() (*App, error) {
 	flag.Parse()
 
 	runtimeConfigFile, err := config.ResolvePath(runtimeConfigPath, config.EnvRuntimeConfigPath)
@@ -51,24 +52,31 @@ func New() (*Program, error) {
 		return nil, fmt.Errorf("app.bootstrap dependencies: %w", err)
 	}
 
-	httpServers, err := newServerGroup(deps.PublicHTTP, deps.SystemHTTP, deps.Health)
+	public, err := NewHTTPServerComponent("public", deps.PublicHTTP)
 	if err != nil {
-		return nil, fmt.Errorf("http.server.group.init: %w", err)
+		return nil, fmt.Errorf("init public server: %w", err)
+	}
+	system, err := NewHTTPServerComponent("system", deps.SystemHTTP)
+	if err != nil {
+		return nil, fmt.Errorf("init system server: %w", err)
 	}
 
-	return &Program{http: httpServers}, nil
+	lc := NewLifecycle(public, system, deps.Health)
+	rt := NewRuntime(lc, 15*time.Second)
+
+	return &App{runtime: rt}, nil
 }
 
-func (p *Program) Run(ctx context.Context) error {
-	if p == nil || p.http == nil {
+func (p *App) Run(ctx context.Context) error {
+	if p == nil || p.runtime == nil {
 		return fmt.Errorf("program is not initialized")
 	}
-	return p.http.Run(ctx)
+	return p.runtime.Run(ctx)
 }
 
-func (p *Program) Close() error {
-	if p == nil || p.http == nil {
+func (p *App) Close() error {
+	if p == nil || p.runtime == nil {
 		return nil
 	}
-	return p.http.Close()
+	return p.runtime.Close()
 }

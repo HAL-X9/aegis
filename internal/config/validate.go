@@ -9,8 +9,8 @@ import (
 // Validate checks cfg for well-formed listen addresses, timeout ordering, and allowed enum values.
 // cfg must not be nil.
 func Validate(cfg *Runtime) error {
-	if err := validateHTTP(&cfg.HTTP); err != nil {
-		return fmt.Errorf("failed validate http config: %w", err)
+	if err := validateListeners(&cfg.Listeners); err != nil {
+		return fmt.Errorf("failed to validate listeners config: %w", err)
 	}
 
 	if err := validateUpstreamTransport(&cfg.UpstreamTransport); err != nil {
@@ -19,6 +19,23 @@ func Validate(cfg *Runtime) error {
 
 	if err := validateLogging(&cfg.Observability.Logging); err != nil {
 		return fmt.Errorf("failed validate logging config: %w", err)
+	}
+
+	return nil
+}
+
+// validateListeners checks listener configs for nil values and invalid HTTP settings.
+func validateListeners(listeners *Listeners) error {
+	if listeners == nil {
+		return fmt.Errorf("listeners: configuration is nil")
+	}
+
+	if err := validateHTTP(&listeners.Public); err != nil {
+		return fmt.Errorf("listeners.public: %w", err)
+	}
+
+	if err := validateHTTP(&listeners.System); err != nil {
+		return fmt.Errorf("listeners.system: %w", err)
 	}
 
 	return nil

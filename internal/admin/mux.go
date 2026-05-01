@@ -1,4 +1,4 @@
-package http
+package admin
 
 import "net/http"
 

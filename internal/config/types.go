@@ -1,4 +1,4 @@
-// Package app defines the process-local app settings document (listeners,
+// Package config defines the process-local app settings document (listeners,
 // timeouts, logging). It is distinct from gateway routing and control-plane policy data.
 package config
 
@@ -45,9 +45,15 @@ type Logging struct {
 	Format string `yaml:"format"`
 }
 
+// Listeners separates public client traffic from internal system endpoints.
+type Listeners struct {
+	Public HTTP `yaml:"public"`
+	System HTTP `yaml:"system"`
+}
+
 // Runtime is the unmarshaled root of the app YAML document; field tags match on-disk layout.
 type Runtime struct {
-	HTTP              HTTP              `yaml:"http"`
+	Listeners         Listeners         `yaml:"listeners"`
 	UpstreamTransport UpstreamTransport `yaml:"upstream_transport"`
 	Observability     Observability     `yaml:"observability"`
 }

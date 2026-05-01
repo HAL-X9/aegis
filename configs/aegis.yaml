@@ -1,14 +1,24 @@
 version: aegisconfig/v1
 
-http:
-  addr: ":8080"
-  tls: null
-  timeouts:
-    read_timeout: 10s
-    read_header_timeout: 5s
-    write_timeout: 30s
-    idle_timeout: 120s
-  max_header_bytes: 1048576
+listeners:
+  public:
+    addr: ":8080"
+    tls: null
+    timeouts:
+      read_timeout: 10s
+      read_header_timeout: 5s
+      write_timeout: 30s
+      idle_timeout: 120s
+    max_header_bytes: 1048576
+
+  system:
+    addr: "127.0.0.1:18080"
+    timeouts:
+      read_timeout: 5s
+      read_header_timeout: 2s
+      write_timeout: 10s
+      idle_timeout: 30s
+    max_header_bytes: 262144
 
 upstream_transport:
   max_idle_conns: 1024

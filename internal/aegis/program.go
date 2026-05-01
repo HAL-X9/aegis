@@ -19,7 +19,7 @@ func init() {
 
 // Program is the process composition root: configuration load, bootstrap, and HTTP lifecycle.
 type Program struct {
-	http *httpServer
+	http *serverGroup
 }
 
 // New parses flags, loads app configuration, bootstraps dependencies, and returns a Program.
@@ -28,35 +28,35 @@ func New() (*Program, error) {
 
 	runtimeConfigFile, err := config.ResolvePath(runtimeConfigPath, config.EnvRuntimeConfigPath)
 	if err != nil {
-		return nil, fmt.Errorf("resolve configuration path: %w", err)
+		return nil, fmt.Errorf("config.resolve runtime path: %w", err)
 	}
 
 	runtimeConfig, err := config.Load(runtimeConfigFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config.load runtime config (%s): %w", runtimeConfigFile, err)
 	}
 
 	routesConfigFile, err := config.ResolvePath(routesConfigPath, config.EnvRoutesConfigPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config.resolve routes path: %w", err)
 	}
 
-	aegisManifest, err := loader.Load(routesConfigFile)
+	gatewayConfig, err := loader.Load(routesConfigFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("controlplane.loader.load manifest (%s): %w", routesConfigFile, err)
 	}
 
-	deps, err := Bootstrap(runtimeConfig, aegisManifest)
+	deps, err := Bootstrap(runtimeConfig, gatewayConfig)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("aegis.bootstrap dependencies: %w", err)
 	}
 
-	httpsrv, err := newHTTPServer(deps.HTTP)
+	httpServers, err := newServerGroup(deps.PublicHTTP, deps.SystemHTTP, deps.Health)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("http.server.group.init: %w", err)
 	}
 
-	return &Program{http: httpsrv}, nil
+	return &Program{http: httpServers}, nil
 }
 
 func (p *Program) Run(ctx context.Context) error {

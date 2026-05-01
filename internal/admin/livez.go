@@ -1,4 +1,4 @@
-package http
+package admin
 
 import (
 	"io"
@@ -17,7 +17,7 @@ func NewHandler(health LivenessChecker) *Handler {
 	return &Handler{health: health}
 }
 
-func (h *Handler) Livez(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Livez(w http.ResponseWriter, _ *http.Request) {
 	if err := h.health.Liveness(); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = io.WriteString(w, "service not alive")

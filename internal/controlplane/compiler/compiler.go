@@ -2,6 +2,9 @@ package compiler
 
 import (
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
 
 	"github.com/aegis/internal/controlplane/model"
 )
@@ -17,7 +20,7 @@ func Compile(cfg *model.GatewayConfig) (*CompiledGatewayConfig, error) {
 	for _, route := range cfg.Routes {
 		compiledRoute = append(compiledRoute, CompiledRoute{
 			PathPrefix: route.Match.PathPrefix,
-			Upstream:   route.Upstream.Host,
+			Upstream:   BuildUpstreamOriginURL(route),
 		})
 	}
 
@@ -30,4 +33,13 @@ func Compile(cfg *model.GatewayConfig) (*CompiledGatewayConfig, error) {
 	*/
 
 	return &CompiledGatewayConfig{Routes: compiledRoute}, nil
+}
+
+func BuildUpstreamOriginURL(route model.Route) string {
+	u := &url.URL{
+		Scheme: route.Upstream.Scheme,
+		Host:   net.JoinHostPort(route.Upstream.Host, strconv.Itoa(route.Upstream.Port)),
+	}
+
+	return u.String()
 }

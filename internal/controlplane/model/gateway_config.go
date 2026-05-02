@@ -16,10 +16,11 @@ type Match struct {
 	Headers    map[string][]string `yaml:"headers"`
 }
 
-// Upstream names a TCP endpoint (host and port) for proxied traffic.
+// Upstream names a TCP endpoint (scheme, host and port) for proxied traffic.
 type Upstream struct {
-	Host string `yaml:"host"`
-	Port int    `yaml:"port"`
+	Scheme string `yaml:"scheme"`
+	Host   string `yaml:"host"`
+	Port   int    `yaml:"port"`
 }
 
 // GatewayConfig is the unmarshaled root of the gateway control-plane document.

@@ -37,12 +37,19 @@ type UpstreamTransport struct {
 // Observability defines process-level telemetry configuration, primarily structured logging, for operational visibility and diagnostics.
 type Observability struct {
 	Logging Logging `yaml:"logging"`
+	Tracing Tracing `yaml:"tracing"`
 }
 
 // Logging selects structured logger level and encoding for process output.
 type Logging struct {
 	Level  string `yaml:"level"`
 	Format string `yaml:"format"`
+}
+
+// Tracing configures distributed tracing settings, including enablement and collector endpoint for exporting trace data.
+type Tracing struct {
+	Enabled  bool   `yaml:"enabled"`
+	Endpoint string `yaml:"endpoint"`
 }
 
 // Listeners separates public client traffic from internal system endpoints.

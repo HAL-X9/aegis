@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/aegis/internal/dataplane/router"
@@ -15,6 +16,13 @@ func NewExecutor(engine *router.Engine, transport http.RoundTripper) *Executor {
 	return &Executor{engine: engine, transport: transport}
 }
 
+// Executor is an HTTP handler responsible for resolving incoming requests
+// against a routing engine and delegating them to the appropriate upstream
+// via a configured transport.
+//
+// It encapsulates:
+//   - engine: a routing engine used for path-based lookup and route resolution.
+//   - transport: an HTTP RoundTripper used to execute outbound requests.
 func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if executor.engine == nil {
 		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
@@ -27,5 +35,28 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// route := candidates[0].Route
+	candidate := candidates[0]
+	originURL := candidate.Route.Upstream
+	path := r.URL.EscapedPath()
+	target := originURL + path
+
+	request, err := http.NewRequestWithContext(r.Context(), r.Method, target, r.Body)
+	if err != nil {
+		http.Error(w, "failed to build HTTP request", http.StatusInternalServerError)
+		return
+	}
+
+	response, err := executor.transport.RoundTrip(request)
+	if err != nil {
+		http.Error(w, "Bad Gateway: upstream service request failed", http.StatusBadGateway)
+		return
+	}
+	defer func() {
+		if err = response.Body.Close(); err != nil {
+			return
+		}
+	}()
+
+	w.WriteHeader(response.StatusCode)
+	_, _ = io.Copy(w, response.Body)
 }

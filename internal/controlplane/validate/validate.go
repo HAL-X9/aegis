@@ -69,6 +69,16 @@ func validateRoute(route *model.Route) error {
 		}
 	}
 
+	if strings.TrimSpace(route.Upstream.Scheme) == "" {
+		return fmt.Errorf("upstream.scheme is required and must be non-empty")
+	}
+
+	switch route.Upstream.Scheme {
+	case "http", "https":
+	default:
+		return fmt.Errorf("upstream.scheme must be one of: http, https")
+	}
+
 	if strings.TrimSpace(route.Upstream.Host) == "" {
 		return fmt.Errorf("route validation failed: upstream.host is required and must not be blank")
 	}

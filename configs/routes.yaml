@@ -1,5 +1,5 @@
-version: routeconfig/v1
-kind: RouteConfig
+# version: routeconfig/v1
+# kind: RouteConfig
 
 routes:
   - name: model-health
@@ -7,7 +7,8 @@ routes:
       path_prefix: /model/v1/healthz
       methods: [GET]
     upstream:
-      host: model.internal
+      scheme: http
+      host: localhost
       port: 8081
 
   - name: orders-model
@@ -15,5 +16,6 @@ routes:
       path_prefix: /model/v1/orders
       methods: [GET, POST]
     upstream:
+      scheme: http
       host: orders.internal
       port: 8082

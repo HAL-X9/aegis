@@ -5,7 +5,7 @@ func BuildRadixTrie(routes []*RouteIndexEntry) *RadixTrie {
 	trie := &RadixTrie{}
 
 	for _, route := range routes {
-		trie.Insert(route.Route.PathPrefix, route)
+		trie.Insert(route.Route.Match.PathPrefix, route)
 	}
 
 	return trie

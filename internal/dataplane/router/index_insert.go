@@ -32,15 +32,6 @@ type RadixTrie struct {
 // RouteIndexEntry groups route candidates and their method mask.
 type RouteIndexEntry struct {
 	Route *compiler.CompiledRoute
-
-	/*
-		TODO:
-		MethodMask MethodMask
-
-		HeaderMatcher CompiledHeaderMatcher
-		QueryMatcher  CompiledQueryMatcher
-		etc
-	*/
 }
 
 // Insert registers a route entry under the provided normalized path.

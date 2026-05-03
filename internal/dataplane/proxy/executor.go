@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/aegis/internal/contracts/methodmask"
 	"github.com/aegis/internal/dataplane/router"
 )
 
@@ -35,10 +36,26 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	candidate := candidates[0]
-	originURL := candidate.Route.Upstream
-	path := r.URL.EscapedPath()
-	target := originURL + path
+	methodBit, ok := methodmask.MethodBit(r.Method)
+	if !ok {
+		http.Error(w, "unsupported HTTP method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var target string
+
+	for _, candidate := range candidates {
+		if candidate.Route.Match.Methods&methodBit != 0 {
+			originURL := candidate.Route.Upstream
+			path := r.URL.EscapedPath()
+			target = originURL + path
+			break
+		}
+	}
+	if target == "" {
+		http.Error(w, "unsupported HTTP method", http.StatusMethodNotAllowed)
+		return
+	}
 
 	request, err := http.NewRequestWithContext(r.Context(), r.Method, target, r.Body)
 	if err != nil {

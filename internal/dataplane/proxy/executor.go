@@ -8,22 +8,38 @@ import (
 	"github.com/aegis/internal/dataplane/router"
 )
 
+// Executor implements an HTTP reverse proxy handler backed by a routing engine.
+//
+// It resolves incoming requests against a routing index and forwards matched
+// requests to upstream services using the configured RoundTripper.
 type Executor struct {
-	engine    *router.Engine
+	// engine provides fast path-based route lookup.
+	engine *router.Engine
+
+	// transport is responsible for executing outbound HTTP requests.
+	// It must be non-nil and safe for concurrent use.
 	transport http.RoundTripper
 }
 
+// NewExecutor creates a new Executor instance.
+// Both engine and transport are required for correct operation.
 func NewExecutor(engine *router.Engine, transport http.RoundTripper) *Executor {
-	return &Executor{engine: engine, transport: transport}
+	return &Executor{
+		engine:    engine,
+		transport: transport,
+	}
 }
 
-// Executor is an HTTP handler responsible for resolving incoming requests
-// against a routing engine and delegating them to the appropriate upstream
-// via a configured transport.
+// ServeHTTP resolves the incoming request using the routing engine and
+// proxies it to a matching upstream service.
 //
-// It encapsulates:
-//   - engine: a routing engine used for path-based lookup and route resolution.
-//   - transport: an HTTP RoundTripper used to execute outbound requests.
+// Behavior:
+//   - returns 503 if the routing engine is unavailable
+//   - returns 404 if no route matches the request path
+//   - returns 405 if no route supports the request method
+//   - returns 502 if upstream request execution fails
+//
+// The request body is forwarded as-is to the upstream service.
 func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if executor.engine == nil {
 		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
@@ -46,34 +62,36 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	for _, candidate := range candidates {
 		if candidate.Route.Match.Methods&methodBit != 0 {
-			originURL := candidate.Route.Upstream
-			path := r.URL.EscapedPath()
-			target = originURL + path
+			target = candidate.Route.Upstream + r.URL.EscapedPath()
 			break
 		}
 	}
+
 	if target == "" {
-		http.Error(w, "unsupported HTTP method", http.StatusMethodNotAllowed)
+		http.Error(w, "method not allowed for matched route", http.StatusMethodNotAllowed)
 		return
 	}
 
-	request, err := http.NewRequestWithContext(r.Context(), r.Method, target, r.Body)
+	req, err := http.NewRequestWithContext(
+		r.Context(),
+		r.Method,
+		target,
+		r.Body,
+	)
 	if err != nil {
-		http.Error(w, "failed to build HTTP request", http.StatusInternalServerError)
+		http.Error(w, "failed to create upstream request", http.StatusInternalServerError)
 		return
 	}
 
-	response, err := executor.transport.RoundTrip(request)
+	resp, err := executor.transport.RoundTrip(req)
 	if err != nil {
-		http.Error(w, "Bad Gateway: upstream service request failed", http.StatusBadGateway)
+		http.Error(w, "bad gateway: upstream request failed", http.StatusBadGateway)
 		return
 	}
 	defer func() {
-		if err = response.Body.Close(); err != nil {
-			return
-		}
+		_ = resp.Body.Close()
 	}()
 
-	w.WriteHeader(response.StatusCode)
-	_, _ = io.Copy(w, response.Body)
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
 }

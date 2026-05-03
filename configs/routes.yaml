@@ -17,5 +17,5 @@ routes:
       methods: [GET, POST]
     upstream:
       scheme: http
-      host: orders.internal
+      host: localhost
       port: 8082

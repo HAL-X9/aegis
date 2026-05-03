@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -127,6 +128,8 @@ func (c *HTTPServerComponent) Name() string {
 func (c *HTTPServerComponent) Run(ctx context.Context) error {
 	listenErrCh := make(chan error, 1)
 	go func() {
+		log.SetFlags(log.LstdFlags | log.LUTC | log.Lmicroseconds)
+		log.Printf("Aegis starting listener: %s", c.name)
 		err := c.server.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			listenErrCh <- err

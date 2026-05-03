@@ -13,10 +13,11 @@ This section describes the minimum path from a clean clone to a running process 
 
 ### Prerequisites
 
-| Requirement | Notes                                                                               |
-| --- |-------------------------------------------------------------------------------------|
-| Go | Version **1.26.0** or newer (see `go.mod`).                                         |
-| Runtime configuration | A valid YAML file conforming to the runtime schema (example: `configs/aegis.yaml`). |
+Before you run Aegis locally, make sure:
+
+- Go **1.26.0+** is installed (`go.mod` is the source of truth).
+- You have a valid runtime YAML config (for example, `configs/aegis.yaml`).
+- You have a routes manifest (for example, `configs/routes.yaml`).
 
 ### Run (local development)
 
@@ -37,17 +38,12 @@ This section describes the minimum path from a clean clone to a running process 
 
 #### Alternative: environment-based configuration
 
-If flags are omitted, the binary resolves paths from environment variables. CLI flags take precedence when both are set.
+If CLI flags are omitted, Aegis resolves config paths from environment variables.
+When both are provided, **CLI flags win**.
 
-| Input | Resolution order |
-| --- | --- |
-| `-config <path>` | Used as the runtime configuration path. |
-| `AEGIS_RUNTIME_CONFIG_PATH` | Used when `-config` is not provided. |
-| `-routes <path>` | Used as the routes manifest path. |
-| `AEGIS_ROUTES_CONFIG_PATH` | Used when `-routes` is not provided. |
-| Neither runtime nor routes source set | The process exits at startup with a descriptive error. |
+Path resolution is straightforward: for runtime config, Aegis uses `-config` first and falls back to `AEGIS_RUNTIME_CONFIG_PATH`; for routes config, it uses `-routes` first and falls back to `AEGIS_ROUTES_CONFIG_PATH`. If neither source is set for runtime or routes, startup fails with a clear error.
 
-Example:
+Example (env-only startup):
 
 ```bash
 export AEGIS_RUNTIME_CONFIG_PATH=configs/aegis.yaml

@@ -23,3 +23,10 @@ func (h *Health) Liveness() error {
 	}
 	return nil
 }
+
+func (h *Health) Readiness() error {
+	if h.shuttingDown.Load() {
+		return errors.New("service shutting down")
+	}
+	return nil
+}

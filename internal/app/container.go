@@ -44,7 +44,7 @@ func Bootstrap(cfg *config.Runtime, controlPlane *model.GatewayConfig) (*Depende
 	publicHTTP := edgepublic.NewPublicServer(cfg, executor)
 
 	return &Dependencies{
-		Config: cfg,
+		Config:     cfg,
 		PublicHTTP: publicHTTP,
 		SystemHTTP: systemHTTP,
 		Health:     healthSvc,

@@ -7,7 +7,8 @@ import (
 	"github.com/aegis/internal/controlplane/model"
 )
 
-// allowedHTTPMethods defines the set of HTTP methods accepted by route validation.
+// allowedHTTPMethods defines the set of supported HTTP methods
+// accepted in route match configuration.
 var allowedHTTPMethods = map[string]struct{}{
 	"GET":     {},
 	"POST":    {},
@@ -18,7 +19,8 @@ var allowedHTTPMethods = map[string]struct{}{
 	"HEAD":    {},
 }
 
-// Validate validates the gateway configuration and returns an error if it is invalid.
+// Validate performs semantic validation of the provided gateway configuration.
+// It returns a non-nil error if the configuration is invalid.
 func Validate(cfg *model.GatewayConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("gateway config validation failed: config is nil")
@@ -31,7 +33,8 @@ func Validate(cfg *model.GatewayConfig) error {
 	return nil
 }
 
-// validateRoutes validates all configured routes and reports the index of the first invalid route.
+// validateRoutes validates a collection of routes.
+// It returns the first encountered validation error with the corresponding index.
 func validateRoutes(routes []model.Route) error {
 	if routes == nil {
 		return fmt.Errorf("routes must be provided: got nil slice")
@@ -45,7 +48,8 @@ func validateRoutes(routes []model.Route) error {
 	return nil
 }
 
-// validateRoute validates a single route, including identity, match rules, and upstream endpoint.
+// validateRoute performs validation of a single route definition,
+// including identity, match conditions, and upstream configuration.
 func validateRoute(route *model.Route) error {
 	if route == nil {
 		return fmt.Errorf("route validation failed: route is nil")

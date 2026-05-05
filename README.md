@@ -31,7 +31,7 @@ Before you run Aegis locally, make sure:
 3. Start the process with explicit runtime and routes configuration paths:
 
    ```bash
-   go run ./cmd -config configs/aegis.yaml -routes configs/routes.yaml
+   go run ./cmd -config configs/aegis.yaml -routes configs/gateway.yaml
    ```
 
    The process starts two listeners declared in the runtime file: public on **`:8080`** and system on **`127.0.0.1:18080`** in the sample configuration.
@@ -47,7 +47,7 @@ Example (env-only startup):
 
 ```bash
 export AEGIS_RUNTIME_CONFIG_PATH=configs/aegis.yaml
-export AEGIS_ROUTES_CONFIG_PATH=configs/routes.yaml
+export AEGIS_ROUTES_CONFIG_PATH=configs/gateway.yaml
 go run ./cmd
 ```
 
@@ -74,7 +74,7 @@ For deployment outside ad-hoc development, build a static binary from the reposi
 
 ```bash
 go build -o app ./cmd
-./app -config /path/to/aegis.yaml -routes /path/to/routes.yaml
+./app -config /path/to/aegis.yaml -routes /path/to/gateway.yaml
 ```
 
 Run the binary under your platform’s process supervisor or container entrypoint; ensure `AEGIS_RUNTIME_CONFIG_PATH`/`-config` and `AEGIS_ROUTES_CONFIG_PATH`/`-routes` are set consistently with your release artifact and configuration management practices.

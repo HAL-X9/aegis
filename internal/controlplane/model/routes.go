@@ -6,6 +6,7 @@ type Route struct {
 	Name     string   `yaml:"name"`
 	Match    Match    `yaml:"match"`
 	Upstream Upstream `yaml:"upstream"`
+	Policies []Policy `yaml:"policies"`
 }
 
 // Match selects inbound requests. Methods, when non-empty, restricts the HTTP verb set;
@@ -21,6 +22,10 @@ type Upstream struct {
 	Scheme string `yaml:"scheme"`
 	Host   string `yaml:"host"`
 	Port   int    `yaml:"port"`
+}
+
+type Policy struct {
+	Name string `yaml:"name"`
 }
 
 // GatewayConfig is the unmarshaled root of the gateway control-plane document.

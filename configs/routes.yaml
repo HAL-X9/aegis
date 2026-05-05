@@ -11,11 +11,45 @@ routes:
       host: localhost
       port: 8081
 
-  - name: orders-model
+  - name: user-profile
     match:
-      path_prefix: /model/v1/orders
-      methods: [GET, POST]
+      path_prefix: /api/v1/profile
+      methods: [GET]
     upstream:
       scheme: http
       host: localhost
       port: 8082
+    policies:
+      # - name: cors-private
+      - name: security-headers
+
+
+policies:
+  # cors:
+    #cors-public:
+      #allow_origins: ["*"]
+      #allow_methods: ["GET", "POST"]
+      #allow_headers: ["Authorization", "Content-Type"]
+
+    #cors-private:
+      #allow_methods: [ "GET", "POST" ]
+      #allow_headers: ["Authorization", "Content-Type", "X-Request-Id"]
+
+  headers:
+    security-headers:
+      request:
+        add:
+          X-Request-Id: "<generated-or-from-incoming>"
+        remove:
+          - X-Forwarded-For
+          - X-Forwarded-Proto
+
+      response:
+        add:
+          X-Content-Type-Options: "nosniff"
+          X-Frame-Options: "DENY"
+          X-XSS-Protection: "1; mode=block"
+        remove:
+          - Server
+
+

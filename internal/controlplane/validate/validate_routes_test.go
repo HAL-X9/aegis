@@ -14,7 +14,7 @@ func TestValidate(t *testing.T) {
 	t.Run("nil config", func(t *testing.T) {
 		t.Parallel()
 		err := Validate(nil)
-		assertErrorContains(t, err, "gateway config validation failed: config is nil")
+		assertErrorContains(t, err, "gateway configuration is nil")
 	})
 
 	t.Run("nil routes slice", func(t *testing.T) {

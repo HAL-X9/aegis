@@ -6,6 +6,10 @@ import (
 	"github.com/aegis/internal/controlplane/model"
 )
 
+// Validate performs semantic validation for a gateway runtime configuration.
+//
+// It validates top-level route definitions and reusable policy sections and
+// returns a descriptive error on the first detected violation.
 func Validate(gatewayCfg *model.GatewayConfig) error {
 	if gatewayCfg == nil {
 		return fmt.Errorf("gateway configuration is nil")

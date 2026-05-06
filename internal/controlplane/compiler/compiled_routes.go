@@ -37,7 +37,7 @@ type CompiledMatch struct {
 
 	// Headers is a simplified equality-based predicate.
 	// NOTE: This is intentionally not a full expression system for performance reasons.
-	Headers HeaderPredicate
+	Headers []HeaderPredicate
 }
 
 // HeaderPredicate defines a simple equality-based constraint on a single HTTP header.
@@ -50,8 +50,10 @@ type HeaderPredicate struct {
 	// Name is the HTTP header key (case-normalized during compilation).
 	Name string
 
-	// AllowedValues is a whitelist of accepted header values.
-	// If empty, header is considered "not constrained".
+	// AllowedValues defines accepted values for this header.
+	// Semantics:
+	//   - len(AllowedValues) == 0: presence-only (header MUST exist, any value accepted)
+	//   - len(AllowedValues) > 0: at least one request value MUST equal one of AllowedValues
 	AllowedValues []string
 }
 

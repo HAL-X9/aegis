@@ -8,6 +8,15 @@ Policies are declarative, reusable objects referenced by routes.
 - Supported policy family: `headers`
 - Not in scope: `cors` (reserved for future work)
 
+## Implementation Status (Current Codebase)
+
+Headers policy types are defined in the control-plane model and compiled-policy structs exist. Full policy validation and runtime mutation application are not complete in the current implementation:
+
+- `internal/controlplane/validate/validate_policies.go` is currently a stub and does not enforce the full validation contract.
+- `internal/dataplane/policy/headers/applier.go` is currently a placeholder and does not yet apply request/response header mutations in the dataplane execution path.
+
+This document remains the normative target behavior for the headers policy contract.
+
 ## Configuration Shape
 
 Top-level policy configuration:
@@ -69,6 +78,8 @@ The control plane must reject invalid policies before runtime. Minimum checks:
 - Header names are compared case-insensitively for conflict detection.
 - A header name must not appear in more than one operation group (`add`, `set`,
   `remove`) within the same direction (`request` or `response`).
+
+In the current codebase, these validation rules are specified but not yet fully enforced at runtime startup due to the validator implementation status noted above.
 
 ## Example
 

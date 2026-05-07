@@ -12,17 +12,17 @@ The router package provides the only supported runtime routing interface for the
 
 ## Process Composition
 
-Process composition is owned by `internal/app/program.go`. Program initialization resolves configuration sources, loads runtime settings, loads the gateway manifest, constructs long-lived dependencies, and initializes HTTP server coordination.
+Process composition is owned by `internal/app/app.go`. Initialization resolves configuration sources, loads runtime settings, loads the gateway manifest, bootstraps dependencies, and initializes HTTP lifecycle components.
 
-Dependency wiring is owned by `internal/app/registry.go`. Bootstrap validates required inputs and assembles the object graph for both traffic planes: a public HTTP server for client traffic and a system HTTP server for operational endpoints. Listener parameters, transport settings, and logging configuration are sourced from `internal/config`.
+Dependency wiring is owned by `internal/app/container.go`. `Bootstrap` validates required inputs and assembles the object graph for both traffic planes: a public HTTP server for client traffic and a system HTTP server for operational endpoints. Listener parameters and transport settings are sourced from `internal/config`.
 
-Server lifecycle orchestration is owned by `internal/app/servergroup.go`. Public and system servers execute concurrently under a shared cancellation context. A fatal run error in either server is treated as a process-level failure and triggers coordinated shutdown.
+Server lifecycle orchestration is owned by `internal/app/lifecycle.go` and `internal/app/runtime.go`. Public and system servers execute concurrently under a shared cancellation context. A fatal run error in either server is treated as a process-level failure and triggers coordinated shutdown.
 
 ## Traffic Planes
 
 The public plane serves user traffic through `internal/dataplane/proxy.Executor`. The executor depends on `internal/dataplane/router.Engine` for path candidate resolution and is responsible for request execution behavior on top of routing results.
 
-The system plane serves process-local operational endpoints through `internal/edge/admin` with handlers in `internal/edge/admin/handlers`. This plane includes liveness reporting and shutdown visibility via `internal/observe/health`.
+The system plane serves process-local operational endpoints through `internal/edge/admin`, with handlers implemented in `internal/edge/admin/handlers.go`. This plane includes liveness and readiness reporting via `internal/observe/health`.
 
 Public and system planes shall remain independently configurable and independently listenable through `listeners.public` and `listeners.system`.
 

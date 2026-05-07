@@ -17,7 +17,7 @@ Before you run Aegis locally, make sure:
 
 - Go **1.26.0+** is installed (`go.mod` is the source of truth).
 - You have a valid runtime YAML config (for example, `configs/aegis.yaml`).
-- You have a routes manifest (for example, `configs/routes.yaml`).
+- You have a routes manifest (for example, `configs/gateway.yaml`).
 
 ### Run (local development)
 
@@ -59,7 +59,7 @@ With the sample configuration, verify the system listener liveness endpoint:
 curl -i http://127.0.0.1:18080/livez
 ```
 
-Liveness responds on **`GET /livez`** from the system plane. Public traffic is served on **`:8080`** and forwarded through the dataplane using routes from `configs/routes.yaml`.
+Liveness responds on **`GET /livez`** from the system plane. Public traffic is served on **`:8080`** and forwarded through the dataplane using routes from `configs/gateway.yaml`.
 
 For a non-HTTP check of the listening socket:
 

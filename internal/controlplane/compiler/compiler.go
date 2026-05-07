@@ -44,7 +44,6 @@ func Compile(cfg *model.GatewayConfig) (*CompiledGatewayConfig, error) {
 		// Compile and normalize header match constraints once during policy build
 		// so request-path evaluation remains deterministic and allocation-light.
 		headersPredicate, err := BuildHeadersPredicate(route.Match.Headers)
-
 		if err != nil {
 			return nil, fmt.Errorf("route %q: compile headers predicate: %w", route.Name, err)
 		}

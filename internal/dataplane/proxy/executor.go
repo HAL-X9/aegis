@@ -41,17 +41,27 @@ func NewExecutor(engine *router.Engine, transport http.RoundTripper) *Executor {
 //
 // The request body is forwarded as-is to the upstream service.
 func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Validate routing engine availability before request processing.
 	if executor.engine == nil {
 		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
+	// Validate transport availability required for upstream communication.
+	if executor.transport == nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Resolve all route candidates matching the incoming request path.
 	candidates := executor.engine.Lookup([]byte(r.URL.Path))
 	if len(candidates) == 0 {
 		http.NotFound(w, r)
 		return
 	}
 
+	// Resolve the bitmask representation of the incoming HTTP method.
+	// Unsupported methods are rejected explicitly.
 	methodBit, ok := methodmask.MethodBit(r.Method)
 	if !ok {
 		http.Error(w, "unsupported HTTP method", http.StatusMethodNotAllowed)
@@ -59,19 +69,36 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var target string
+	var methodMatch bool
 
+	// Select the first route candidate that satisfies both method and header
+	// predicates. Build the upstream target URL from the matched route upstream
+	// origin and the escaped request path.
 	for _, candidate := range candidates {
 		if candidate.Route.Match.Methods&methodBit != 0 {
-			target = candidate.Route.Upstream + r.URL.EscapedPath()
-			break
+			methodMatch = true
+			if router.HeadersMatch(candidate.Route.Match.Headers, r.Header) {
+				target = candidate.Route.Upstream + r.URL.EscapedPath()
+				break
+			}
+			continue
 		}
 	}
 
+	// At least one route matched the path, but none accepted the method.
 	if target == "" {
-		http.Error(w, "method not allowed for matched route", http.StatusMethodNotAllowed)
+		if methodMatch == false {
+			http.Error(w, "method not allowed for matched route", http.StatusMethodNotAllowed)
+			return
+		}
+		http.NotFound(w, r)
 		return
 	}
 
+	// Construct the upstream request while preserving:
+	//   - request context
+	//   - HTTP method
+	//   - original request body stream
 	req, err := http.NewRequestWithContext(
 		r.Context(),
 		r.Method,
@@ -83,6 +110,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Execute the upstream request using the configured transport.
 	resp, err := executor.transport.RoundTrip(req)
 	if err != nil {
 		http.Error(w, "bad gateway: upstream request failed", http.StatusBadGateway)

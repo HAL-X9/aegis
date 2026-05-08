@@ -148,6 +148,34 @@ func TestValidate_routeFields(t *testing.T) {
 			wantSubstr: []string{"unsupported method", "TRACE"},
 		},
 		{
+			name: "empty header key",
+			route: model.Route{
+				Name: "r",
+				Match: model.Match{
+					PathPrefix: "/",
+					Headers: map[string][]string{
+						"": {"v"},
+					},
+				},
+				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+			},
+			wantSubstr: []string{"invalid header key: empty string"},
+		},
+		{
+			name: "header key exceeds max length",
+			route: model.Route{
+				Name: "r",
+				Match: model.Match{
+					PathPrefix: "/",
+					Headers: map[string][]string{
+						strings.Repeat("a", 257): {"v"},
+					},
+				},
+				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+			},
+			wantSubstr: []string{"exceeds 256 characters"},
+		},
+		{
 			name: "empty upstream scheme",
 			route: model.Route{
 				Name:     "r",

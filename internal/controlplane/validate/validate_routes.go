@@ -59,6 +59,16 @@ func validateRoute(route *model.Route) error {
 		}
 	}
 
+	for k := range route.Match.Headers {
+		if strings.TrimSpace(k) == "" {
+			return fmt.Errorf("invalid header key: empty string")
+		}
+
+		if len(k) > 256 {
+			return fmt.Errorf("invalid header key %q: exceeds 256 characters", k)
+		}
+	}
+
 	if strings.TrimSpace(route.Upstream.Scheme) == "" {
 		return fmt.Errorf("upstream.scheme is required and must be non-empty")
 	}

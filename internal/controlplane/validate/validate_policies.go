@@ -3,26 +3,71 @@ package validate
 import (
 	"fmt"
 
+	"golang.org/x/net/http/httpguts"
+
 	"github.com/aegis/internal/controlplane/model"
 )
 
-func validatesPolicies(policy *model.Policies) error {
+func validatePolicies(policy *model.Policies) error {
 	if policy == nil {
-		return fmt.Errorf("")
+		return fmt.Errorf("policies configuration must not be nil")
 	}
 
-	for _, header := range policy.Headers {
-		if err := validateHeaders(&header); err != nil {
-			return fmt.Errorf("")
+	for policyName, headers := range policy.Headers {
+		if err := validateHeaders(policyName, &headers); err != nil {
+			return fmt.Errorf("headers validation failed in policy %q: %w", policyName, err)
 		}
 	}
 
 	return nil
 }
 
-func validateHeaders(headers *model.Headers) error {
+func validateHeaders(policyName string, headers *model.Headers) error {
+	if headers == nil {
+		return fmt.Errorf("headers configuration must not be nil")
+	}
 
-	// TODO: validate request/response header operations and reject conflicting names across add/set/remove.
+	if err := validateHeadersOps("request", &headers.Request); err != nil {
+		return fmt.Errorf("policy %q request invalid: %w", policyName, err)
+
+	}
+
+	if err := validateHeadersOps("response", &headers.Response); err != nil {
+		return fmt.Errorf("policy %q response invalid: %w", policyName, err)
+	}
+	return nil
+}
+
+func validateHeadersOps(_ string, headersOps *model.HeadersOps) error {
+	if headersOps == nil {
+		return fmt.Errorf("header operations configuration must not be nil")
+	}
+
+	for headerName := range headersOps.Add {
+		if err := validateHeaderName(headerName); err != nil {
+			return fmt.Errorf("invalid header name in add operation: %w", err)
+		}
+	}
+
+	for headerName := range headersOps.Set {
+		if err := validateHeaderName(headerName); err != nil {
+			return fmt.Errorf("invalid header name in set operation: %w", err)
+		}
+	}
+
+	for _, headerName := range headersOps.Remove {
+		if err := validateHeaderName(headerName); err != nil {
+			return fmt.Errorf("invalid header name in remove operation: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func validateHeaderName(name string) error {
+	if !httpguts.ValidHeaderFieldName(name) {
+		return fmt.Errorf("invalid header name %q", name)
+	}
 
 	return nil
 }

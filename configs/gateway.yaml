@@ -27,6 +27,8 @@ routes:
       port: 8082
     policies:
       # - name: cors-private
+      # - name: authn
+      # - name: authz
       - name: security-headers
 
 
@@ -40,6 +42,11 @@ policies:
     #cors-private:
       #allow_methods: [ "GET", "POST" ]
       #allow_headers: ["Authorization", "Content-Type", "X-Request-Id"]
+
+  # authn:
+    # jwt-private:
+      # enabled: true
+
 
   headers:
     security-headers:

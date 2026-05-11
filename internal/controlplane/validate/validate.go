@@ -19,7 +19,7 @@ func Validate(gatewayCfg *model.GatewayConfig) error {
 		return fmt.Errorf("gateway config validation failed: routes are invalid: %w", err)
 	}
 
-	if err := validatesPolicies(&gatewayCfg.Policies); err != nil {
+	if err := validatePolicies(&gatewayCfg.Policies); err != nil {
 		return fmt.Errorf("gateway configuration validation failed: invalid policies: %w", err)
 	}
 

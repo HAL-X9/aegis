@@ -22,7 +22,7 @@ import (
 //   - optimized for fast lookup and evaluation
 func Compile(cfg *model.GatewayConfig) (*CompiledGatewayConfig, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("compile routing configuration: manifest is nil")
+		return nil, fmt.Errorf("compile routing configuration: config is nil")
 	}
 
 	// Preallocate slice to avoid dynamic growth during compilation.

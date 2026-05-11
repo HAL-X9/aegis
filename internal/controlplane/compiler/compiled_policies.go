@@ -1,53 +1,127 @@
 package compiler
 
-// CompiledPolicies contains immutable, precompiled policy artifacts used by the
-// dataplane at runtime.
+// HeaderID is a compact runtime identifier.
 //
-// Policies are indexed by logical policy name. Each entry is expected to be
-// fully validated and normalized during compilation so runtime application can
-// execute without additional schema checks.
-type CompiledPolicies struct {
-	Headers map[string]CompiledHeaders
+// Static well-known headers are resolved during compilation
+// into fixed numeric identifiers.
+//
+// Dynamic/custom headers are also assigned stable IDs
+// inside the compiled configuration snapshot.
+//
+// Runtime must never perform:
+//   - string normalization
+//   - canonicalization
+//   - map lookups by string
+type HeaderID uint16
+
+const (
+	HeaderUnknown HeaderID = iota
+
+	HeaderHost
+	HeaderContentType
+	HeaderContentLength
+
+	HeaderAuthorization
+
+	HeaderXForwardedFor
+	HeaderXForwardedProto
+	HeaderXRequestID
+
+	HeaderServer
+
+	HeaderXContentTypeOptions
+	HeaderXFrameOptions
+	HeaderXXSSProtection
+
+	// HeaderDynamicStart Dynamic headers begin here.
+	HeaderDynamicStart
+)
+
+// HeaderOpCode is a compiled executable operation.
+//
+// Runtime executor should behave like a tiny VM:
+// sequential execution with predictable branches.
+type HeaderOpCode uint8
+
+const (
+	// HeaderOpRemove Remove header unconditionally.
+	HeaderOpRemove HeaderOpCode = iota
+
+	// HeaderOpSet Set header unconditionally.
+	HeaderOpSet
+
+	// HeaderOpAddIfAbsent Add header only if absent.
+	HeaderOpAddIfAbsent
+)
+
+// HeaderOp is a compact immutable runtime instruction.
+//
+// Layout is intentionally cache-friendly.
+//
+// Value fields are used only for Set/AddIfAbsent.
+//
+// ValueOffset/ValueLength reference bytes inside
+// CompiledHeadersPlan.Values blob.
+type HeaderOp struct {
+	HeaderID HeaderID
+	Op       HeaderOpCode
+
+	// Offset inside immutable values blob.
+	ValueOffset uint32
+
+	// Value length inside values blob.
+	ValueLength uint16
 }
 
-// CompiledHeaders holds precompiled header mutation plans for both traffic
-// directions.
+// CompiledHeadersPlan is a fully normalized executable plan.
 //
-// Request operations are applied to the upstream-bound request.
-// Response operations are applied to the downstream-bound response.
-type CompiledHeaders struct {
-	Request  CompiledHeadersOps
-	Response CompiledHeadersOps
-}
-
-// CompiledHeadersOps defines a normalized execution plan for header mutations
-// in one traffic direction.
+// Compiler responsibilities:
+//   - validation
+//   - deduplication
+//   - canonicalization
+//   - conflict detection
+//   - operation ordering
+//   - value blob packing
 //
-// All header names must be canonicalized and deduplicated at compile time.
-// Operation ordering is deterministic and intended to be applied as:
+// Runtime responsibilities:
+//   - sequential execution only
+//
+// Execution order is guaranteed:
+//
 //  1. Remove
 //  2. Set
 //  3. AddIfAbsent
 //
-// This ordering guarantees predictable behavior when policies are audited and
-// replayed across environments.
-type CompiledHeadersOps struct {
-	// Remove lists header names to delete unconditionally.
-	Remove []string
+// Runtime must never sort or resolve conflicts.
+type CompiledHeadersPlan struct {
+	Ops []HeaderOp
 
-	// Set lists header assignments that overwrite existing values.
-	Set []HeaderKV
-
-	// AddIfAbsent lists header assignments applied only when the target header
-	// key is currently missing.
-	AddIfAbsent []HeaderKV
+	// Immutable packed values blob.
+	//
+	// HeaderOp.ValueOffset and HeaderOp.ValueLength
+	// reference slices inside this buffer.
+	Values []byte
 }
 
-// HeaderKV is a normalized header assignment used by compiled mutation plans.
+// CompiledHeaders contains request/response plans.
+type CompiledHeaders struct {
+	Request  CompiledHeadersPlan
+	Response CompiledHeadersPlan
+}
+
+// HeaderRegistry resolves HeaderID into canonical header names.
 //
-// Key must be a canonical HTTP header name.
-// Value is the prevalidated literal assigned by the operation.
-type HeaderKV struct {
-	Key   string
-	Value string
+// Registry is immutable after compilation.
+//
+// Runtime should use direct indexed lookup:
+//
+//	name := registry.Names[id]
+//
+// No maps on hot path.
+type HeaderRegistry struct {
+	Names [][]byte
+}
+
+type CompiledPolicies struct {
+	Headers []CompiledHeaders
 }

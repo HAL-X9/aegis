@@ -5,10 +5,10 @@ import (
 
 	"golang.org/x/net/http/httpguts"
 
-	"github.com/aegis/internal/controlplane/model"
+	"github.com/aegis/internal/controlplane/schema"
 )
 
-func validatePolicies(policy *model.Policies) error {
+func validatePolicies(policy *schema.Policies) error {
 	if policy == nil {
 		return fmt.Errorf("policies configuration must not be nil")
 	}
@@ -22,7 +22,7 @@ func validatePolicies(policy *model.Policies) error {
 	return nil
 }
 
-func validateHeaders(policyName string, headers *model.Headers) error {
+func validateHeaders(policyName string, headers *schema.Headers) error {
 	if headers == nil {
 		return fmt.Errorf("headers configuration must not be nil")
 	}
@@ -38,7 +38,7 @@ func validateHeaders(policyName string, headers *model.Headers) error {
 	return nil
 }
 
-func validateHeadersOps(_ string, headersOps *model.HeadersOps) error {
+func validateHeadersOps(_ string, headersOps *schema.HeadersOps) error {
 	if headersOps == nil {
 		return fmt.Errorf("header operations configuration must not be nil")
 	}

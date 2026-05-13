@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aegis/internal/controlplane/model"
+	"github.com/aegis/internal/controlplane/schema"
 )
 
 func TestBuildEngine(t *testing.T) {
@@ -19,12 +19,12 @@ func TestBuildEngine(t *testing.T) {
 	})
 
 	t.Run("builds engine and resolves route candidates", func(t *testing.T) {
-		engine, err := BuildEngine(&model.GatewayConfig{
-			Routes: []model.Route{
+		engine, err := BuildEngine(&schema.GatewayConfig{
+			Routes: []schema.Route{
 				{
 					Name:     "api",
-					Match:    model.Match{PathPrefix: "/api", Methods: []string{"GET"}},
-					Upstream: model.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
+					Match:    schema.Match{PathPrefix: "/api", Methods: []string{"GET"}},
+					Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
 				},
 			},
 		})
@@ -50,12 +50,12 @@ func TestEngineLookup(t *testing.T) {
 	})
 
 	t.Run("nil path returns nil", func(t *testing.T) {
-		engine, err := BuildEngine(&model.GatewayConfig{
-			Routes: []model.Route{
+		engine, err := BuildEngine(&schema.GatewayConfig{
+			Routes: []schema.Route{
 				{
 					Name:     "x",
-					Match:    model.Match{PathPrefix: "/x"},
-					Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+					Match:    schema.Match{PathPrefix: "/x"},
+					Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 1},
 				},
 			},
 		})

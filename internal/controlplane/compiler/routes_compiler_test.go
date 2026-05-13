@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/aegis/internal/contracts/methodmask"
-	"github.com/aegis/internal/controlplane/model"
+	"github.com/aegis/internal/controlplane/schema"
 )
 
 func TestCompile(t *testing.T) {
@@ -21,7 +21,7 @@ func TestCompile(t *testing.T) {
 	})
 
 	t.Run("empty routes", func(t *testing.T) {
-		out, err := Compile(&model.GatewayConfig{})
+		out, err := Compile(&schema.GatewayConfig{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -31,15 +31,15 @@ func TestCompile(t *testing.T) {
 	})
 
 	t.Run("single route", func(t *testing.T) {
-		cfg := &model.GatewayConfig{
-			Routes: []model.Route{
+		cfg := &schema.GatewayConfig{
+			Routes: []schema.Route{
 				{
 					Name: "api",
-					Match: model.Match{
+					Match: schema.Match{
 						PathPrefix: "/v1/",
 						Methods:    []string{"GET", "POST"},
 					},
-					Upstream: model.Upstream{
+					Upstream: schema.Upstream{
 						Scheme: "https",
 						Host:   "api.example.com",
 						Port:   443,
@@ -73,12 +73,12 @@ func TestCompile(t *testing.T) {
 	})
 
 	t.Run("empty methods list is MethodAll", func(t *testing.T) {
-		cfg := &model.GatewayConfig{
-			Routes: []model.Route{
+		cfg := &schema.GatewayConfig{
+			Routes: []schema.Route{
 				{
 					Name:  "any",
-					Match: model.Match{PathPrefix: "/", Methods: nil},
-					Upstream: model.Upstream{
+					Match: schema.Match{PathPrefix: "/", Methods: nil},
+					Upstream: schema.Upstream{
 						Scheme: "http",
 						Host:   "127.0.0.1",
 						Port:   80,
@@ -96,15 +96,15 @@ func TestCompile(t *testing.T) {
 	})
 
 	t.Run("invalid HTTP method", func(t *testing.T) {
-		cfg := &model.GatewayConfig{
-			Routes: []model.Route{
+		cfg := &schema.GatewayConfig{
+			Routes: []schema.Route{
 				{
 					Name: "bad",
-					Match: model.Match{
+					Match: schema.Match{
 						PathPrefix: "/",
 						Methods:    []string{"BOGUS"},
 					},
-					Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+					Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 1},
 				},
 			},
 		}
@@ -124,10 +124,10 @@ func TestCompile(t *testing.T) {
 	})
 
 	t.Run("route order preserved", func(t *testing.T) {
-		cfg := &model.GatewayConfig{
-			Routes: []model.Route{
-				{Name: "first", Match: model.Match{PathPrefix: "/a"}, Upstream: model.Upstream{Scheme: "http", Host: "a", Port: 1}},
-				{Name: "second", Match: model.Match{PathPrefix: "/b"}, Upstream: model.Upstream{Scheme: "http", Host: "b", Port: 2}},
+		cfg := &schema.GatewayConfig{
+			Routes: []schema.Route{
+				{Name: "first", Match: schema.Match{PathPrefix: "/a"}, Upstream: schema.Upstream{Scheme: "http", Host: "a", Port: 1}},
+				{Name: "second", Match: schema.Match{PathPrefix: "/b"}, Upstream: schema.Upstream{Scheme: "http", Host: "b", Port: 2}},
 			},
 		}
 		out, err := Compile(cfg)
@@ -143,34 +143,34 @@ func TestCompile(t *testing.T) {
 func TestBuildUpstreamOriginURL(t *testing.T) {
 	tests := []struct {
 		name  string
-		route model.Route
+		route schema.Route
 		want  string
 	}{
 		{
 			name: "https hostname",
-			route: model.Route{
-				Upstream: model.Upstream{Scheme: "https", Host: "example.com", Port: 443},
+			route: schema.Route{
+				Upstream: schema.Upstream{Scheme: "https", Host: "example.com", Port: 443},
 			},
 			want: "https://example.com:443",
 		},
 		{
 			name: "http ipv4",
-			route: model.Route{
-				Upstream: model.Upstream{Scheme: "http", Host: "10.0.0.1", Port: 8080},
+			route: schema.Route{
+				Upstream: schema.Upstream{Scheme: "http", Host: "10.0.0.1", Port: 8080},
 			},
 			want: "http://10.0.0.1:8080",
 		},
 		{
 			name: "ipv6 literal host",
-			route: model.Route{
-				Upstream: model.Upstream{Scheme: "http", Host: "2001:db8::1", Port: 80},
+			route: schema.Route{
+				Upstream: schema.Upstream{Scheme: "http", Host: "2001:db8::1", Port: 80},
 			},
 			want: "http://[2001:db8::1]:80",
 		},
 		{
 			name: "port zero",
-			route: model.Route{
-				Upstream: model.Upstream{Scheme: "http", Host: "x", Port: 0},
+			route: schema.Route{
+				Upstream: schema.Upstream{Scheme: "http", Host: "x", Port: 0},
 			},
 			want: "http://x:0",
 		},

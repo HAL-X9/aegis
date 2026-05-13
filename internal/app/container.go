@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/aegis/internal/config"
-	"github.com/aegis/internal/controlplane/model"
+	"github.com/aegis/internal/controlplane/schema"
 	"github.com/aegis/internal/dataplane/proxy"
 	"github.com/aegis/internal/dataplane/router"
 	edgeadmin "github.com/aegis/internal/edge/admin"
@@ -23,7 +23,7 @@ type Dependencies struct {
 	Engine     *router.Engine
 }
 
-func Bootstrap(cfg *config.Runtime, controlPlane *model.GatewayConfig) (*Dependencies, error) {
+func Bootstrap(cfg *config.Runtime, controlPlane *schema.GatewayConfig) (*Dependencies, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("app config is nil")
 	}

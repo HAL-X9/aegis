@@ -1,4 +1,4 @@
-package model
+package schema
 
 // Route binds request matching criteria to a single upstream. Name is a stable
 // identifier for logs, metrics, and diagnostics.

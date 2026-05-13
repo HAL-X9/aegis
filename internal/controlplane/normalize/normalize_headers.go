@@ -5,24 +5,29 @@ import (
 
 	"net/textproto"
 
-	"github.com/aegis/internal/controlplane/model"
+	"github.com/aegis/internal/controlplane/schema"
 )
 
 type NormalizedHeaders struct {
+	Request  NormalizedHeadersOps
+	Response NormalizedHeadersOps
+}
+
+type NormalizedHeadersOps struct {
 	Add    map[string]string
 	Set    map[string]string
 	Remove []string
 }
 
-func NormalizeHeaders(headersOps *model.HeadersOps) (*NormalizedHeaders, error) {
+func normalizeHeadersOps(headersOps *schema.HeadersOps) (*NormalizedHeadersOps, error) {
 	if headersOps == nil {
 		return nil, fmt.Errorf("headers operations must not be nil")
 	}
 
-	out := &NormalizedHeaders{
+	out := &NormalizedHeadersOps{
 		Add:    make(map[string]string, len(headersOps.Add)),
 		Set:    make(map[string]string, len(headersOps.Set)),
-		Remove: make([]string, len(headersOps.Remove)),
+		Remove: make([]string, 0, len(headersOps.Remove)),
 	}
 
 	for k, v := range headersOps.Add {

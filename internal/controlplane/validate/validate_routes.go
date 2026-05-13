@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aegis/internal/controlplane/model"
+	"github.com/aegis/internal/controlplane/schema"
 )
 
 // allowedHTTPMethods defines the set of supported HTTP methods
@@ -21,7 +21,7 @@ var allowedHTTPMethods = map[string]struct{}{
 
 // validateRoutes validates a collection of routes.
 // It returns the first encountered validation error with the corresponding index.
-func validateRoutes(routes []model.Route) error {
+func validateRoutes(routes []schema.Route) error {
 	if routes == nil {
 		return fmt.Errorf("routes must be provided: got nil slice")
 	}
@@ -36,7 +36,7 @@ func validateRoutes(routes []model.Route) error {
 
 // validateRoute performs validation of a single route definition,
 // including identity, match conditions, and upstream configuration.
-func validateRoute(route *model.Route) error {
+func validateRoute(route *schema.Route) error {
 	if route == nil {
 		return fmt.Errorf("route validation failed: route is nil")
 	}

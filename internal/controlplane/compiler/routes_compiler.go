@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/aegis/internal/contracts/methodmask"
-	"github.com/aegis/internal/controlplane/model"
+	"github.com/aegis/internal/controlplane/schema"
 )
 
 // Compile transforms control-plane configuration into an immutable
@@ -20,7 +20,7 @@ import (
 //   - fully precomputed (no parsing in runtime path)
 //   - deterministic routing rules
 //   - optimized for fast lookup and evaluation
-func Compile(cfg *model.GatewayConfig) (*CompiledGatewayConfig, error) {
+func Compile(cfg *schema.GatewayConfig) (*CompiledGatewayConfig, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("compile routing configuration: config is nil")
 	}
@@ -76,7 +76,7 @@ func Compile(cfg *model.GatewayConfig) (*CompiledGatewayConfig, error) {
 //   - repeated string formatting in dataplane hot path
 //   - runtime allocation overhead
 //   - ambiguity in scheme/host/port resolution
-func BuildUpstreamOriginURL(route model.Route) string {
+func BuildUpstreamOriginURL(route schema.Route) string {
 	u := &url.URL{
 		Scheme: route.Upstream.Scheme,
 

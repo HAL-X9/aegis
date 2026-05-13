@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/aegis/internal/controlplane/compiler"
-	"github.com/aegis/internal/controlplane/model"
+	"github.com/aegis/internal/controlplane/schema"
 )
 
 // Engine encapsulates compiled routing structures required at request time.
@@ -14,7 +14,7 @@ type Engine struct {
 
 // BuildEngine compiles routing configuration and prepares app lookup
 // structures used by the dataplane.
-func BuildEngine(config *model.GatewayConfig) (*Engine, error) {
+func BuildEngine(config *schema.GatewayConfig) (*Engine, error) {
 	compiled, err := compiler.Compile(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile routing configuration: %w", err)

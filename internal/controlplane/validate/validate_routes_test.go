@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aegis/internal/controlplane/model"
+	"github.com/aegis/internal/controlplane/schema"
 )
 
 func TestValidate(t *testing.T) {
@@ -19,7 +19,7 @@ func TestValidate(t *testing.T) {
 
 	t.Run("nil routes slice", func(t *testing.T) {
 		t.Parallel()
-		err := Validate(&model.GatewayConfig{Routes: nil})
+		err := Validate(&schema.GatewayConfig{Routes: nil})
 		assertErrorContains(t, err,
 			"gateway config validation failed: routes are invalid",
 			"routes must be provided: got nil slice",
@@ -28,7 +28,7 @@ func TestValidate(t *testing.T) {
 
 	t.Run("empty routes slice is valid", func(t *testing.T) {
 		t.Parallel()
-		err := Validate(&model.GatewayConfig{Routes: []model.Route{}})
+		err := Validate(&schema.GatewayConfig{Routes: []schema.Route{}})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -36,12 +36,12 @@ func TestValidate(t *testing.T) {
 
 	t.Run("minimal valid route", func(t *testing.T) {
 		t.Parallel()
-		cfg := &model.GatewayConfig{
-			Routes: []model.Route{
+		cfg := &schema.GatewayConfig{
+			Routes: []schema.Route{
 				{
 					Name:     "api",
-					Match:    model.Match{PathPrefix: "/api"},
-					Upstream: model.Upstream{Scheme: "http", Host: "127.0.0.1", Port: 8080},
+					Match:    schema.Match{PathPrefix: "/api"},
+					Upstream: schema.Upstream{Scheme: "http", Host: "127.0.0.1", Port: 8080},
 				},
 			},
 		}
@@ -52,15 +52,15 @@ func TestValidate(t *testing.T) {
 
 	t.Run("valid route with methods and https", func(t *testing.T) {
 		t.Parallel()
-		cfg := &model.GatewayConfig{
-			Routes: []model.Route{
+		cfg := &schema.GatewayConfig{
+			Routes: []schema.Route{
 				{
 					Name: "full",
-					Match: model.Match{
+					Match: schema.Match{
 						PathPrefix: "/v1/",
 						Methods:    []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"},
 					},
-					Upstream: model.Upstream{Scheme: "https", Host: "example.com", Port: 443},
+					Upstream: schema.Upstream{Scheme: "https", Host: "example.com", Port: 443},
 				},
 			},
 		}
@@ -71,17 +71,17 @@ func TestValidate(t *testing.T) {
 
 	t.Run("invalid route index in error", func(t *testing.T) {
 		t.Parallel()
-		cfg := &model.GatewayConfig{
-			Routes: []model.Route{
+		cfg := &schema.GatewayConfig{
+			Routes: []schema.Route{
 				{
 					Name:     "ok",
-					Match:    model.Match{PathPrefix: "/a"},
-					Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+					Match:    schema.Match{PathPrefix: "/a"},
+					Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 1},
 				},
 				{
 					Name:     "",
-					Match:    model.Match{PathPrefix: "/b"},
-					Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 2},
+					Match:    schema.Match{PathPrefix: "/b"},
+					Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 2},
 				},
 			},
 		}
@@ -99,133 +99,133 @@ func TestValidate_routeFields(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		route      model.Route
+		route      schema.Route
 		wantSubstr []string
 	}{
 		{
 			name: "blank name",
-			route: model.Route{
+			route: schema.Route{
 				Name:     "   ",
-				Match:    model.Match{PathPrefix: "/x"},
-				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+				Match:    schema.Match{PathPrefix: "/x"},
+				Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 1},
 			},
 			wantSubstr: []string{"name is required and must not be blank"},
 		},
 		{
 			name: "blank path_prefix",
-			route: model.Route{
+			route: schema.Route{
 				Name:     "r",
-				Match:    model.Match{PathPrefix: ""},
-				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+				Match:    schema.Match{PathPrefix: ""},
+				Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 1},
 			},
 			wantSubstr: []string{"match.path_prefix is required and must not be blank"},
 		},
 		{
 			name: "path_prefix whitespace only",
-			route: model.Route{
+			route: schema.Route{
 				Name:     "r",
-				Match:    model.Match{PathPrefix: "  \t "},
-				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+				Match:    schema.Match{PathPrefix: "  \t "},
+				Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 1},
 			},
 			wantSubstr: []string{"match.path_prefix is required and must not be blank"},
 		},
 		{
 			name: "path_prefix without leading slash",
-			route: model.Route{
+			route: schema.Route{
 				Name:     "r",
-				Match:    model.Match{PathPrefix: "api/"},
-				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+				Match:    schema.Match{PathPrefix: "api/"},
+				Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 1},
 			},
 			wantSubstr: []string{"match.path_prefix must start with '/'"},
 		},
 		{
 			name: "unsupported method",
-			route: model.Route{
+			route: schema.Route{
 				Name:     "r",
-				Match:    model.Match{PathPrefix: "/", Methods: []string{"GET", "TRACE"}},
-				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+				Match:    schema.Match{PathPrefix: "/", Methods: []string{"GET", "TRACE"}},
+				Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 1},
 			},
 			wantSubstr: []string{"unsupported method", "TRACE"},
 		},
 		{
 			name: "empty header key",
-			route: model.Route{
+			route: schema.Route{
 				Name: "r",
-				Match: model.Match{
+				Match: schema.Match{
 					PathPrefix: "/",
 					Headers: map[string][]string{
 						"": {"v"},
 					},
 				},
-				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+				Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 1},
 			},
 			wantSubstr: []string{"invalid header key: empty string"},
 		},
 		{
 			name: "header key exceeds max length",
-			route: model.Route{
+			route: schema.Route{
 				Name: "r",
-				Match: model.Match{
+				Match: schema.Match{
 					PathPrefix: "/",
 					Headers: map[string][]string{
 						strings.Repeat("a", 257): {"v"},
 					},
 				},
-				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+				Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 1},
 			},
 			wantSubstr: []string{"exceeds 256 characters"},
 		},
 		{
 			name: "empty upstream scheme",
-			route: model.Route{
+			route: schema.Route{
 				Name:     "r",
-				Match:    model.Match{PathPrefix: "/"},
-				Upstream: model.Upstream{Scheme: "", Host: "h", Port: 1},
+				Match:    schema.Match{PathPrefix: "/"},
+				Upstream: schema.Upstream{Scheme: "", Host: "h", Port: 1},
 			},
 			wantSubstr: []string{"upstream.scheme is required and must be non-empty"},
 		},
 		{
 			name: "upstream scheme not http or https",
-			route: model.Route{
+			route: schema.Route{
 				Name:     "r",
-				Match:    model.Match{PathPrefix: "/"},
-				Upstream: model.Upstream{Scheme: "grpc", Host: "h", Port: 1},
+				Match:    schema.Match{PathPrefix: "/"},
+				Upstream: schema.Upstream{Scheme: "grpc", Host: "h", Port: 1},
 			},
 			wantSubstr: []string{"upstream.scheme must be one of: http, https"},
 		},
 		{
 			name: "blank upstream host",
-			route: model.Route{
+			route: schema.Route{
 				Name:     "r",
-				Match:    model.Match{PathPrefix: "/"},
-				Upstream: model.Upstream{Scheme: "http", Host: "  ", Port: 1},
+				Match:    schema.Match{PathPrefix: "/"},
+				Upstream: schema.Upstream{Scheme: "http", Host: "  ", Port: 1},
 			},
 			wantSubstr: []string{"upstream.host is required and must not be blank"},
 		},
 		{
 			name: "port zero",
-			route: model.Route{
+			route: schema.Route{
 				Name:     "r",
-				Match:    model.Match{PathPrefix: "/"},
-				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 0},
+				Match:    schema.Match{PathPrefix: "/"},
+				Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 0},
 			},
 			wantSubstr: []string{"upstream.port must be in range 1..65535"},
 		},
 		{
 			name: "port negative",
-			route: model.Route{
+			route: schema.Route{
 				Name:     "r",
-				Match:    model.Match{PathPrefix: "/"},
-				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: -1},
+				Match:    schema.Match{PathPrefix: "/"},
+				Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: -1},
 			},
 			wantSubstr: []string{"upstream.port must be in range 1..65535"},
 		},
 		{
 			name: "port above 65535",
-			route: model.Route{
+			route: schema.Route{
 				Name:     "r",
-				Match:    model.Match{PathPrefix: "/"},
-				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 65536},
+				Match:    schema.Match{PathPrefix: "/"},
+				Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 65536},
 			},
 			wantSubstr: []string{"upstream.port must be in range 1..65535"},
 		},
@@ -234,7 +234,7 @@ func TestValidate_routeFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := Validate(&model.GatewayConfig{Routes: []model.Route{tt.route}})
+			err := Validate(&schema.GatewayConfig{Routes: []schema.Route{tt.route}})
 			assertErrorContains(t, err, append([]string{
 				"gateway config validation failed: routes are invalid",
 				"invalid route at index 0",
@@ -249,12 +249,12 @@ func TestValidate_acceptedPortBoundaries(t *testing.T) {
 		port := port
 		t.Run("port_"+strconv.Itoa(port), func(t *testing.T) {
 			t.Parallel()
-			cfg := &model.GatewayConfig{
-				Routes: []model.Route{
+			cfg := &schema.GatewayConfig{
+				Routes: []schema.Route{
 					{
 						Name:     "edge",
-						Match:    model.Match{PathPrefix: "/"},
-						Upstream: model.Upstream{Scheme: "http", Host: "h", Port: port},
+						Match:    schema.Match{PathPrefix: "/"},
+						Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: port},
 					},
 				},
 			}
@@ -276,18 +276,18 @@ func TestValidateRoutes(t *testing.T) {
 
 	t.Run("empty slice", func(t *testing.T) {
 		t.Parallel()
-		if err := validateRoutes([]model.Route{}); err != nil {
+		if err := validateRoutes([]schema.Route{}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("valid single route", func(t *testing.T) {
 		t.Parallel()
-		routes := []model.Route{
+		routes := []schema.Route{
 			{
 				Name:     "a",
-				Match:    model.Match{PathPrefix: "/"},
-				Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 1},
+				Match:    schema.Match{PathPrefix: "/"},
+				Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 1},
 			},
 		}
 		if err := validateRoutes(routes); err != nil {
@@ -307,10 +307,10 @@ func TestValidateRoute(t *testing.T) {
 
 	t.Run("valid minimal", func(t *testing.T) {
 		t.Parallel()
-		r := &model.Route{
+		r := &schema.Route{
 			Name:     "x",
-			Match:    model.Match{PathPrefix: "/p"},
-			Upstream: model.Upstream{Scheme: "https", Host: "h", Port: 443},
+			Match:    schema.Match{PathPrefix: "/p"},
+			Upstream: schema.Upstream{Scheme: "https", Host: "h", Port: 443},
 		}
 		if err := validateRoute(r); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -320,9 +320,9 @@ func TestValidateRoute(t *testing.T) {
 
 func TestValidate_errorWrapping(t *testing.T) {
 	t.Parallel()
-	err := Validate(&model.GatewayConfig{
-		Routes: []model.Route{
-			{Name: "bad", Match: model.Match{PathPrefix: "/"}, Upstream: model.Upstream{Scheme: "http", Host: "h", Port: 0}},
+	err := Validate(&schema.GatewayConfig{
+		Routes: []schema.Route{
+			{Name: "bad", Match: schema.Match{PathPrefix: "/"}, Upstream: schema.Upstream{Scheme: "http", Host: "h", Port: 0}},
 		},
 	})
 	if err == nil {

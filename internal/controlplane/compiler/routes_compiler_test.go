@@ -15,7 +15,7 @@ func TestCompile(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !strings.Contains(err.Error(), "manifest is nil") {
+		if !strings.Contains(err.Error(), "config is nil") {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/aegis/internal/config"
-	"github.com/aegis/internal/controlplane/schema"
+	"github.com/aegis/internal/controlplane/representation/source"
 	"github.com/aegis/internal/dataplane/proxy"
 	"github.com/aegis/internal/dataplane/router"
 	edgeadmin "github.com/aegis/internal/edge/admin"
@@ -23,7 +23,7 @@ type Dependencies struct {
 	Engine     *router.Engine
 }
 
-func Bootstrap(cfg *config.Runtime, controlPlane *schema.GatewayConfig) (*Dependencies, error) {
+func Bootstrap(cfg *config.Runtime, controlPlane *source.GatewayConfig) (*Dependencies, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("app config is nil")
 	}
@@ -36,7 +36,7 @@ func Bootstrap(cfg *config.Runtime, controlPlane *schema.GatewayConfig) (*Depend
 
 	engine, err := router.BuildEngine(controlPlane)
 	if err != nil {
-		return nil, fmt.Errorf("build route engine: %w", err)
+		return nil, fmt.Errorf("pipeline route engine: %w", err)
 	}
 
 	upstreamTransport := newUpstreamTransport(&cfg.UpstreamTransport)

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aegis/internal/controlplane/schema"
+	"github.com/aegis/internal/controlplane/representation/source"
 	"github.com/aegis/internal/dataplane/router"
 )
 
@@ -18,7 +18,7 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
 }
 
-func buildTestEngine(t *testing.T, cfg *schema.GatewayConfig) *router.Engine {
+func buildTestEngine(t *testing.T, cfg *source.GatewayConfig) *router.Engine {
 	t.Helper()
 	engine, err := router.BuildEngine(cfg)
 	if err != nil {
@@ -43,12 +43,12 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 500 when transport is nil", func(t *testing.T) {
-		engine := buildTestEngine(t, &schema.GatewayConfig{
-			Routes: []schema.Route{
+		engine := buildTestEngine(t, &source.GatewayConfig{
+			Routes: []source.Route{
 				{
 					Name:     "api",
-					Match:    schema.Match{PathPrefix: "/api"},
-					Upstream: schema.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
+					Match:    source.Match{PathPrefix: "/api"},
+					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
 				},
 			},
 		})
@@ -64,12 +64,12 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 404 when path has no matching route", func(t *testing.T) {
-		engine := buildTestEngine(t, &schema.GatewayConfig{
-			Routes: []schema.Route{
+		engine := buildTestEngine(t, &source.GatewayConfig{
+			Routes: []source.Route{
 				{
 					Name:     "api",
-					Match:    schema.Match{PathPrefix: "/api"},
-					Upstream: schema.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
+					Match:    source.Match{PathPrefix: "/api"},
+					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
 				},
 			},
 		})
@@ -87,12 +87,12 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 405 for unsupported incoming HTTP method", func(t *testing.T) {
-		engine := buildTestEngine(t, &schema.GatewayConfig{
-			Routes: []schema.Route{
+		engine := buildTestEngine(t, &source.GatewayConfig{
+			Routes: []source.Route{
 				{
 					Name:     "api",
-					Match:    schema.Match{PathPrefix: "/api"},
-					Upstream: schema.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
+					Match:    source.Match{PathPrefix: "/api"},
+					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
 				},
 			},
 		})
@@ -110,12 +110,12 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 405 when route matches path but not method", func(t *testing.T) {
-		engine := buildTestEngine(t, &schema.GatewayConfig{
-			Routes: []schema.Route{
+		engine := buildTestEngine(t, &source.GatewayConfig{
+			Routes: []source.Route{
 				{
 					Name:     "api",
-					Match:    schema.Match{PathPrefix: "/api", Methods: []string{http.MethodGet}},
-					Upstream: schema.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
+					Match:    source.Match{PathPrefix: "/api", Methods: []string{http.MethodGet}},
+					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
 				},
 			},
 		})
@@ -133,18 +133,18 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 404 when method matches but headers do not", func(t *testing.T) {
-		engine := buildTestEngine(t, &schema.GatewayConfig{
-			Routes: []schema.Route{
+		engine := buildTestEngine(t, &source.GatewayConfig{
+			Routes: []source.Route{
 				{
 					Name: "api",
-					Match: schema.Match{
+					Match: source.Match{
 						PathPrefix: "/api",
 						Methods:    []string{http.MethodGet},
 						Headers: map[string][]string{
 							"X-Tenant": {"a"},
 						},
 					},
-					Upstream: schema.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
+					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
 				},
 			},
 		})
@@ -163,12 +163,12 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 502 when upstream call fails", func(t *testing.T) {
-		engine := buildTestEngine(t, &schema.GatewayConfig{
-			Routes: []schema.Route{
+		engine := buildTestEngine(t, &source.GatewayConfig{
+			Routes: []source.Route{
 				{
 					Name:     "api",
-					Match:    schema.Match{PathPrefix: "/api", Methods: []string{http.MethodGet}},
-					Upstream: schema.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
+					Match:    source.Match{PathPrefix: "/api", Methods: []string{http.MethodGet}},
+					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
 				},
 			},
 		})
@@ -186,23 +186,23 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("proxies response for first matching route", func(t *testing.T) {
-		engine := buildTestEngine(t, &schema.GatewayConfig{
-			Routes: []schema.Route{
+		engine := buildTestEngine(t, &source.GatewayConfig{
+			Routes: []source.Route{
 				{
 					Name: "restricted",
-					Match: schema.Match{
+					Match: source.Match{
 						PathPrefix: "/api",
 						Methods:    []string{http.MethodGet},
 						Headers: map[string][]string{
 							"X-Tenant": {"a"},
 						},
 					},
-					Upstream: schema.Upstream{Scheme: "http", Host: "ignored", Port: 8080},
+					Upstream: source.Upstream{Scheme: "http", Host: "ignored", Port: 8080},
 				},
 				{
 					Name:     "fallback",
-					Match:    schema.Match{PathPrefix: "/api", Methods: []string{http.MethodGet}},
-					Upstream: schema.Upstream{Scheme: "http", Host: "upstream", Port: 9090},
+					Match:    source.Match{PathPrefix: "/api", Methods: []string{http.MethodGet}},
+					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 9090},
 				},
 			},
 		})

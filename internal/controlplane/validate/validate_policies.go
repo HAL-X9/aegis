@@ -3,9 +3,8 @@ package validate
 import (
 	"fmt"
 
-	"golang.org/x/net/http/httpguts"
-
 	"github.com/aegis/internal/controlplane/schema"
+	"golang.org/x/net/http/httpguts"
 )
 
 func validatePolicies(policy *schema.Policies) error {

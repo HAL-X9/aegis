@@ -1,4 +1,4 @@
-package compiler
+package snapshot
 
 // HeaderID is a compact runtime identifier.
 //

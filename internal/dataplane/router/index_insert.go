@@ -3,7 +3,7 @@ package router
 import (
 	"bytes"
 
-	"github.com/aegis/internal/controlplane/compiler"
+	"github.com/aegis/internal/controlplane/compile"
 )
 
 // RadixNode represents a single trie node in the radix index.
@@ -31,7 +31,7 @@ type RadixTrie struct {
 
 // RouteIndexEntry groups route candidates and their method mask.
 type RouteIndexEntry struct {
-	Route *compiler.CompiledRoute
+	Route *compile.CompiledRoute
 }
 
 // Insert registers a route entry under the provided normalized path.

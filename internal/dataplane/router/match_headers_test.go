@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/aegis/internal/controlplane/compiler"
+	"github.com/aegis/internal/controlplane/compile"
 )
 
 func TestHeadersMatch(t *testing.T) {
@@ -15,14 +15,14 @@ func TestHeadersMatch(t *testing.T) {
 	})
 
 	t.Run("required header missing", func(t *testing.T) {
-		preds := []compiler.HeaderPredicate{{Name: "X-Req"}}
+		preds := []compile.HeaderPredicate{{Name: "X-Req"}}
 		if HeadersMatch(preds, http.Header{}) {
 			t.Fatal("expected false when required header missing")
 		}
 	})
 
 	t.Run("presence only predicate", func(t *testing.T) {
-		preds := []compiler.HeaderPredicate{{Name: "X-Req", AllowedValues: nil}}
+		preds := []compile.HeaderPredicate{{Name: "X-Req", AllowedValues: nil}}
 		headers := http.Header{"X-Req": []string{"anything"}}
 		if !HeadersMatch(preds, headers) {
 			t.Fatal("expected true when required header is present")
@@ -30,7 +30,7 @@ func TestHeadersMatch(t *testing.T) {
 	})
 
 	t.Run("allowed value matched from multiple request values", func(t *testing.T) {
-		preds := []compiler.HeaderPredicate{
+		preds := []compile.HeaderPredicate{
 			{Name: "X-Role", AllowedValues: []string{"admin", "owner"}},
 		}
 		headers := http.Header{"X-Role": []string{"user", "owner"}}
@@ -40,7 +40,7 @@ func TestHeadersMatch(t *testing.T) {
 	})
 
 	t.Run("allowed values mismatch", func(t *testing.T) {
-		preds := []compiler.HeaderPredicate{
+		preds := []compile.HeaderPredicate{
 			{Name: "X-Role", AllowedValues: []string{"admin"}},
 		}
 		headers := http.Header{"X-Role": []string{"user"}}

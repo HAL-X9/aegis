@@ -3,7 +3,7 @@ package router
 import (
 	"testing"
 
-	"github.com/aegis/internal/controlplane/compiler"
+	"github.com/aegis/internal/controlplane/compile"
 )
 
 func TestBuildRadixTrie(t *testing.T) {
@@ -18,8 +18,8 @@ func TestBuildRadixTrie(t *testing.T) {
 	})
 
 	t.Run("indexes all provided routes", func(t *testing.T) {
-		r1 := &RouteIndexEntry{Route: &compiler.CompiledRoute{Name: "r1", Match: compiler.CompiledMatch{PathPrefix: "/a"}}}
-		r2 := &RouteIndexEntry{Route: &compiler.CompiledRoute{Name: "r2", Match: compiler.CompiledMatch{PathPrefix: "/b"}}}
+		r1 := &RouteIndexEntry{Route: &compile.CompiledRoute{Name: "r1", Match: compile.CompiledMatch{PathPrefix: "/a"}}}
+		r2 := &RouteIndexEntry{Route: &compile.CompiledRoute{Name: "r2", Match: compile.CompiledMatch{PathPrefix: "/b"}}}
 		trie := BuildRadixTrie([]*RouteIndexEntry{r1, r2})
 
 		gotA := trie.Lookup([]byte("/a"))

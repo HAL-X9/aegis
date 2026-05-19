@@ -3,7 +3,7 @@ package router
 import (
 	"net/http"
 
-	"github.com/aegis/internal/controlplane/compile"
+	"github.com/aegis/internal/controlplane/snapshot"
 )
 
 // HeadersMatch reports whether all header predicates are satisfied
@@ -16,7 +16,7 @@ import (
 //
 // An empty AllowedValues slice means that only header presence
 // is required.
-func HeadersMatch(preds []compile.HeaderPredicate, headers http.Header) bool {
+func HeadersMatch(preds []snapshot.HeaderPredicate, headers http.Header) bool {
 	if len(preds) == 0 {
 		return true
 	}

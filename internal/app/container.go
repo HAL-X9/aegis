@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"github.com/aegis/internal/config"
-	"github.com/aegis/internal/controlplane/representation/source"
+	"github.com/aegis/internal/controlplane/pipeline"
+	"github.com/aegis/internal/controlplane/schema"
 	"github.com/aegis/internal/dataplane/proxy"
 	"github.com/aegis/internal/dataplane/router"
 	edgeadmin "github.com/aegis/internal/edge/admin"
@@ -23,18 +24,23 @@ type Dependencies struct {
 	Engine     *router.Engine
 }
 
-func Bootstrap(cfg *config.Runtime, controlPlane *source.GatewayConfig) (*Dependencies, error) {
+func Bootstrap(cfg *config.Runtime, config *schema.GatewayConfig) (*Dependencies, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("app config is nil")
 	}
-	if controlPlane == nil {
+	if config == nil {
 		return nil, fmt.Errorf("controlplane manifest is nil")
+	}
+
+	compiled, err := pipeline.Build(config)
+	if err != nil {
+		return nil, fmt.Errorf("")
 	}
 
 	healthSvc := health.NewHealth()
 	systemHTTP := edgeadmin.NewSystemServer(cfg, healthSvc)
 
-	engine, err := router.BuildEngine(controlPlane)
+	engine, err := router.BuildEngine(compiled)
 	if err != nil {
 		return nil, fmt.Errorf("pipeline route engine: %w", err)
 	}

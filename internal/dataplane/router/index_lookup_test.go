@@ -3,7 +3,7 @@ package router
 import (
 	"testing"
 
-	"github.com/aegis/internal/controlplane/compile"
+	"github.com/aegis/internal/controlplane/snapshot"
 )
 
 func TestRadixTrieLookup(t *testing.T) {
@@ -16,8 +16,8 @@ func TestRadixTrieLookup(t *testing.T) {
 
 	t.Run("prefers exact static route over dynamic", func(t *testing.T) {
 		trie := &RadixTrie{}
-		staticEntry := &RouteIndexEntry{Route: &compile.CompiledRoute{Name: "static"}}
-		paramEntry := &RouteIndexEntry{Route: &compile.CompiledRoute{Name: "param"}}
+		staticEntry := &RouteIndexEntry{Route: &snapshot.CompiledRoute{Name: "static"}}
+		paramEntry := &RouteIndexEntry{Route: &snapshot.CompiledRoute{Name: "param"}}
 
 		trie.Insert("/users/me", staticEntry)
 		trie.Insert("/users/:id", paramEntry)
@@ -30,7 +30,7 @@ func TestRadixTrieLookup(t *testing.T) {
 
 	t.Run("uses param child when static edge missing", func(t *testing.T) {
 		trie := &RadixTrie{}
-		entry := &RouteIndexEntry{Route: &compile.CompiledRoute{Name: "param"}}
+		entry := &RouteIndexEntry{Route: &snapshot.CompiledRoute{Name: "param"}}
 		trie.Insert("/users/:id", entry)
 
 		got := trie.Lookup([]byte("/users/123"))
@@ -41,7 +41,7 @@ func TestRadixTrieLookup(t *testing.T) {
 
 	t.Run("uses wildcard child for suffix", func(t *testing.T) {
 		trie := &RadixTrie{}
-		entry := &RouteIndexEntry{Route: &compile.CompiledRoute{Name: "wild"}}
+		entry := &RouteIndexEntry{Route: &snapshot.CompiledRoute{Name: "wild"}}
 		trie.Insert("/files/*path", entry)
 
 		got := trie.Lookup([]byte("/files/a/b/c"))
@@ -52,7 +52,7 @@ func TestRadixTrieLookup(t *testing.T) {
 
 	t.Run("returns nil when no matching edges", func(t *testing.T) {
 		trie := &RadixTrie{}
-		trie.Insert("/api/v1", &RouteIndexEntry{Route: &compile.CompiledRoute{Name: "v1"}})
+		trie.Insert("/api/v1", &RouteIndexEntry{Route: &snapshot.CompiledRoute{Name: "v1"}})
 
 		if got := trie.Lookup([]byte("/api/v2")); got != nil {
 			t.Fatalf("got %#v, want nil", got)

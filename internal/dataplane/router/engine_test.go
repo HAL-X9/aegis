@@ -4,27 +4,29 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aegis/internal/controlplane/representation/source"
+	"github.com/aegis/internal/controlplane/snapshot"
 )
 
 func TestBuildEngine(t *testing.T) {
-	t.Run("returns wrapped error for invalid config", func(t *testing.T) {
+	t.Run("returns error for nil config", func(t *testing.T) {
 		_, err := BuildEngine(nil)
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !strings.Contains(err.Error(), "failed to compile routing configuration") {
+		if !strings.Contains(err.Error(), "config is nil") {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("builds engine and resolves route candidates", func(t *testing.T) {
-		engine, err := BuildEngine(&source.GatewayConfig{
-			Routes: []source.Route{
+		engine, err := BuildEngine(&snapshot.CompiledConfig{
+			Routes: []snapshot.CompiledRoute{
 				{
-					Name:     "api",
-					Match:    source.Match{PathPrefix: "/api", Methods: []string{"GET"}},
-					Upstream: source.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
+					Name: "api",
+					Match: snapshot.CompiledMatch{
+						PathPrefix: "/api",
+					},
+					Upstream: "http://localhost:8080",
 				},
 			},
 		})
@@ -50,12 +52,14 @@ func TestEngineLookup(t *testing.T) {
 	})
 
 	t.Run("nil path returns nil", func(t *testing.T) {
-		engine, err := BuildEngine(&source.GatewayConfig{
-			Routes: []source.Route{
+		engine, err := BuildEngine(&snapshot.CompiledConfig{
+			Routes: []snapshot.CompiledRoute{
 				{
-					Name:     "x",
-					Match:    source.Match{PathPrefix: "/x"},
-					Upstream: source.Upstream{Scheme: "http", Host: "h", Port: 1},
+					Name: "x",
+					Match: snapshot.CompiledMatch{
+						PathPrefix: "/x",
+					},
+					Upstream: "http://h:1",
 				},
 			},
 		})

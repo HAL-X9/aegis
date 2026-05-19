@@ -3,13 +3,13 @@ package router
 import (
 	"testing"
 
-	"github.com/aegis/internal/controlplane/compile"
+	"github.com/aegis/internal/controlplane/snapshot"
 )
 
 func TestRadixTrieInsert(t *testing.T) {
 	t.Run("insert creates root and terminal candidate", func(t *testing.T) {
 		trie := &RadixTrie{}
-		entry := &RouteIndexEntry{Route: &compile.CompiledRoute{Name: "route-a"}}
+		entry := &RouteIndexEntry{Route: &snapshot.CompiledRoute{Name: "route-a"}}
 
 		trie.Insert("/api/v1", entry)
 
@@ -24,8 +24,8 @@ func TestRadixTrieInsert(t *testing.T) {
 
 	t.Run("insert reuses dynamic edges for parameter and wildcard", func(t *testing.T) {
 		trie := &RadixTrie{}
-		param := &RouteIndexEntry{Route: &compile.CompiledRoute{Name: "param"}}
-		wild := &RouteIndexEntry{Route: &compile.CompiledRoute{Name: "wild"}}
+		param := &RouteIndexEntry{Route: &snapshot.CompiledRoute{Name: "param"}}
+		wild := &RouteIndexEntry{Route: &snapshot.CompiledRoute{Name: "wild"}}
 
 		trie.Insert("/users/:id", param)
 		trie.Insert("/assets/*path", wild)
@@ -40,8 +40,8 @@ func TestRadixTrieInsert(t *testing.T) {
 
 	t.Run("insert appends candidates on same terminal node", func(t *testing.T) {
 		trie := &RadixTrie{}
-		first := &RouteIndexEntry{Route: &compile.CompiledRoute{Name: "first"}}
-		second := &RouteIndexEntry{Route: &compile.CompiledRoute{Name: "second"}}
+		first := &RouteIndexEntry{Route: &snapshot.CompiledRoute{Name: "first"}}
+		second := &RouteIndexEntry{Route: &snapshot.CompiledRoute{Name: "second"}}
 
 		trie.Insert("/same", first)
 		trie.Insert("/same", second)

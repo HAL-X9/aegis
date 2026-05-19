@@ -3,8 +3,7 @@ package router
 import (
 	"fmt"
 
-	"github.com/aegis/internal/controlplane/compile"
-	"github.com/aegis/internal/controlplane/representation/source"
+	"github.com/aegis/internal/controlplane/snapshot"
 )
 
 // Engine encapsulates compiled routing structures required at request time.
@@ -12,30 +11,22 @@ type Engine struct {
 	trie *RadixTrie
 }
 
-// BuildEngine compiles routing configuration and prepares app lookup
-// structures used by the dataplane.
-func BuildEngine(config *source.GatewayConfig) (*Engine, error) {
-	compiled, err := compile.Compile(config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compile routing configuration: %w", err)
-	}
-	if compiled == nil {
-		return nil, fmt.Errorf("invalid compile result: nil manifest with no error")
+// BuildEngine prepares lookup structures from an already-compiled control-plane snapshot.
+func BuildEngine(cfg *snapshot.CompiledConfig) (*Engine, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config is nil")
 	}
 
-	entries := make([]*RouteIndexEntry, 0, len(compiled.Routes))
-
-	for i := range compiled.Routes {
+	entries := make([]*RouteIndexEntry, 0, len(cfg.Routes))
+	for i := range cfg.Routes {
 		entries = append(entries, &RouteIndexEntry{
-			Route: &compiled.Routes[i],
+			Route: &cfg.Routes[i],
 		})
 	}
 
 	trie := BuildRadixTrie(entries)
 
-	engine := &Engine{trie: trie}
-
-	return engine, nil
+	return &Engine{trie: trie}, nil
 }
 
 // Lookup returns route candidates that match the provided request path.

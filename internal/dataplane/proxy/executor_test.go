@@ -8,7 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aegis/internal/controlplane/representation/source"
+	"github.com/aegis/internal/contracts/methodmask"
+	"github.com/aegis/internal/controlplane/snapshot"
 	"github.com/aegis/internal/dataplane/router"
 )
 
@@ -18,7 +19,7 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
 }
 
-func buildTestEngine(t *testing.T, cfg *source.GatewayConfig) *router.Engine {
+func buildTestEngine(t *testing.T, cfg *snapshot.CompiledConfig) *router.Engine {
 	t.Helper()
 	engine, err := router.BuildEngine(cfg)
 	if err != nil {
@@ -43,12 +44,15 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 500 when transport is nil", func(t *testing.T) {
-		engine := buildTestEngine(t, &source.GatewayConfig{
-			Routes: []source.Route{
+		engine := buildTestEngine(t, &snapshot.CompiledConfig{
+			Routes: []snapshot.CompiledRoute{
 				{
-					Name:     "api",
-					Match:    source.Match{PathPrefix: "/api"},
-					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
+					Name: "api",
+					Match: snapshot.CompiledMatch{
+						PathPrefix: "/api",
+						Methods:    methodmask.MethodAll,
+					},
+					Upstream: "http://upstream:8080",
 				},
 			},
 		})
@@ -64,12 +68,15 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 404 when path has no matching route", func(t *testing.T) {
-		engine := buildTestEngine(t, &source.GatewayConfig{
-			Routes: []source.Route{
+		engine := buildTestEngine(t, &snapshot.CompiledConfig{
+			Routes: []snapshot.CompiledRoute{
 				{
-					Name:     "api",
-					Match:    source.Match{PathPrefix: "/api"},
-					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
+					Name: "api",
+					Match: snapshot.CompiledMatch{
+						PathPrefix: "/api",
+						Methods:    methodmask.MethodAll,
+					},
+					Upstream: "http://upstream:8080",
 				},
 			},
 		})
@@ -87,12 +94,15 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 405 for unsupported incoming HTTP method", func(t *testing.T) {
-		engine := buildTestEngine(t, &source.GatewayConfig{
-			Routes: []source.Route{
+		engine := buildTestEngine(t, &snapshot.CompiledConfig{
+			Routes: []snapshot.CompiledRoute{
 				{
-					Name:     "api",
-					Match:    source.Match{PathPrefix: "/api"},
-					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
+					Name: "api",
+					Match: snapshot.CompiledMatch{
+						PathPrefix: "/api",
+						Methods:    methodmask.MethodAll,
+					},
+					Upstream: "http://upstream:8080",
 				},
 			},
 		})
@@ -110,12 +120,20 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 405 when route matches path but not method", func(t *testing.T) {
-		engine := buildTestEngine(t, &source.GatewayConfig{
-			Routes: []source.Route{
+		getMask, ok := methodmask.MethodBit(http.MethodGet)
+		if !ok {
+			t.Fatal("failed to get method bit for GET")
+		}
+
+		engine := buildTestEngine(t, &snapshot.CompiledConfig{
+			Routes: []snapshot.CompiledRoute{
 				{
-					Name:     "api",
-					Match:    source.Match{PathPrefix: "/api", Methods: []string{http.MethodGet}},
-					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
+					Name: "api",
+					Match: snapshot.CompiledMatch{
+						PathPrefix: "/api",
+						Methods:    getMask,
+					},
+					Upstream: "http://upstream:8080",
 				},
 			},
 		})
@@ -133,18 +151,21 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 404 when method matches but headers do not", func(t *testing.T) {
-		engine := buildTestEngine(t, &source.GatewayConfig{
-			Routes: []source.Route{
+		engine := buildTestEngine(t, &snapshot.CompiledConfig{
+			Routes: []snapshot.CompiledRoute{
 				{
 					Name: "api",
-					Match: source.Match{
+					Match: snapshot.CompiledMatch{
 						PathPrefix: "/api",
-						Methods:    []string{http.MethodGet},
-						Headers: map[string][]string{
-							"X-Tenant": {"a"},
+						Methods:    methodmask.MethodAll,
+						Headers: []snapshot.HeaderPredicate{
+							{
+								Name:          "X-Tenant",
+								AllowedValues: []string{"a"},
+							},
 						},
 					},
-					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
+					Upstream: "http://upstream:8080",
 				},
 			},
 		})
@@ -163,12 +184,15 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 502 when upstream call fails", func(t *testing.T) {
-		engine := buildTestEngine(t, &source.GatewayConfig{
-			Routes: []source.Route{
+		engine := buildTestEngine(t, &snapshot.CompiledConfig{
+			Routes: []snapshot.CompiledRoute{
 				{
-					Name:     "api",
-					Match:    source.Match{PathPrefix: "/api", Methods: []string{http.MethodGet}},
-					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 8080},
+					Name: "api",
+					Match: snapshot.CompiledMatch{
+						PathPrefix: "/api",
+						Methods:    methodmask.MethodAll,
+					},
+					Upstream: "http://upstream:8080",
 				},
 			},
 		})
@@ -186,23 +210,29 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("proxies response for first matching route", func(t *testing.T) {
-		engine := buildTestEngine(t, &source.GatewayConfig{
-			Routes: []source.Route{
+		engine := buildTestEngine(t, &snapshot.CompiledConfig{
+			Routes: []snapshot.CompiledRoute{
 				{
 					Name: "restricted",
-					Match: source.Match{
+					Match: snapshot.CompiledMatch{
 						PathPrefix: "/api",
-						Methods:    []string{http.MethodGet},
-						Headers: map[string][]string{
-							"X-Tenant": {"a"},
+						Methods:    methodmask.MethodAll,
+						Headers: []snapshot.HeaderPredicate{
+							{
+								Name:          "X-Tenant",
+								AllowedValues: []string{"a"},
+							},
 						},
 					},
-					Upstream: source.Upstream{Scheme: "http", Host: "ignored", Port: 8080},
+					Upstream: "http://ignored:8080",
 				},
 				{
-					Name:     "fallback",
-					Match:    source.Match{PathPrefix: "/api", Methods: []string{http.MethodGet}},
-					Upstream: source.Upstream{Scheme: "http", Host: "upstream", Port: 9090},
+					Name: "fallback",
+					Match: snapshot.CompiledMatch{
+						PathPrefix: "/api",
+						Methods:    methodmask.MethodAll,
+					},
+					Upstream: "http://upstream:9090",
 				},
 			},
 		})

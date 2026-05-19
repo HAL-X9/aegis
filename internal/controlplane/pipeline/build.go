@@ -4,10 +4,15 @@ import (
 	"fmt"
 
 	"github.com/aegis/internal/controlplane/compile"
+	"github.com/aegis/internal/controlplane/ir"
 	"github.com/aegis/internal/controlplane/normalize"
 	"github.com/aegis/internal/controlplane/schema"
 	"github.com/aegis/internal/controlplane/snapshot"
 )
+
+func Build(config *schema.GatewayConfig) (*snapshot.CompiledConfig, error) {
+	return nil, nil
+}
 
 // BuildPolicies compiles a policy source into an internal executable representation.
 //
@@ -28,4 +33,8 @@ func BuildPolicies(schema *schema.Policies) (*snapshot.CompiledPolicies, error) 
 	}
 
 	return compiledPolicies, nil
+}
+
+func BuildRoutes(schema *ir.Route) (*snapshot.CompiledPolicies, error) {
+	return nil, nil
 }

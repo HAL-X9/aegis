@@ -34,7 +34,7 @@ func Bootstrap(cfg *config.Runtime, config *schema.GatewayConfig) (*Dependencies
 
 	compiled, err := pipeline.Build(config)
 	if err != nil {
-		return nil, fmt.Errorf("")
+		return nil, fmt.Errorf("failed to build gateway pipeline: %w", err)
 	}
 
 	healthSvc := health.NewHealth()

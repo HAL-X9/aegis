@@ -18,7 +18,7 @@ import (
 // The resulting structure is safe for compilation and runtime execution. The function does not mutate input state.
 func Policies(cfg *schema.Policies) (*ir.NormalizedPolicies, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("")
+		return nil, fmt.Errorf("normalize policies: config is nil")
 	}
 
 	out := &ir.NormalizedPolicies{

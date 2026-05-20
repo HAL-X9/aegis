@@ -73,7 +73,7 @@ lsof -nP -iTCP:18080 -sTCP:LISTEN
 For deployment outside ad-hoc development, build a static binary from the repository root and invoke it with the same configuration contract:
 
 ```bash
-go pipeline -o app ./cmd
+go build -o app ./cmd
 ./app -config /path/to/aegis.yaml -routes /path/to/gateway.yaml
 ```
 

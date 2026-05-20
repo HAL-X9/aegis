@@ -9,6 +9,10 @@ import (
 // Validate checks cfg for well-formed listen addresses, timeout ordering, and allowed enum values.
 // cfg must not be nil.
 func Validate(cfg *Runtime) error {
+	if cfg == nil {
+		return fmt.Errorf("validate runtime config: config is nil")
+	}
+
 	if err := validateListeners(&cfg.Listeners); err != nil {
 		return fmt.Errorf("failed to validate listeners config: %w", err)
 	}

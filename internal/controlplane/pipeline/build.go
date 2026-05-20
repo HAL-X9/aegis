@@ -4,14 +4,52 @@ import (
 	"fmt"
 
 	"github.com/aegis/internal/controlplane/compile"
-	"github.com/aegis/internal/controlplane/ir"
 	"github.com/aegis/internal/controlplane/normalize"
 	"github.com/aegis/internal/controlplane/schema"
 	"github.com/aegis/internal/controlplane/snapshot"
 )
 
+// Build compiles the gateway configuration into a runtime snapshot.
+//
+// The build process includes route and policy compilation.
+// The input configuration is not mutated.
 func Build(config *schema.GatewayConfig) (*snapshot.CompiledConfig, error) {
-	return nil, nil
+	if config == nil {
+		return nil, fmt.Errorf("build compiled configuration: gateway config is nil")
+	}
+
+	routes, err := BuildRoutes(config)
+	if err != nil {
+		return nil, fmt.Errorf("build compiled configuration: route build failed: %w", err)
+	}
+
+	policies, err := BuildPolicies(&config.Policies)
+	if err != nil {
+		return nil, fmt.Errorf("build compiled configuration: policy build failed: %w", err)
+	}
+
+	return &snapshot.CompiledConfig{
+		Routes:   routes,
+		Policies: *policies,
+	}, nil
+}
+
+// BuildRoutes normalizes and compiles route definitions into executable routes.
+//
+// The input configuration is not mutated.
+func BuildRoutes(config *schema.GatewayConfig) ([]snapshot.CompiledRoute, error) {
+	if config == nil {
+		return nil, fmt.Errorf("compile routes configuration: gateway config is nil")
+	}
+
+	normalizedRoutes := normalize.Routes(config.Routes)
+
+	compiledRoutes, err := compile.Routes(normalizedRoutes)
+	if err != nil {
+		return nil, fmt.Errorf("compile routes configuration: route compilation failed: %w", err)
+	}
+
+	return compiledRoutes, nil
 }
 
 // BuildPolicies compiles a policy source into an internal executable representation.
@@ -33,8 +71,4 @@ func BuildPolicies(schema *schema.Policies) (*snapshot.CompiledPolicies, error) 
 	}
 
 	return compiledPolicies, nil
-}
-
-func BuildRoutes(schema *ir.Route) (*snapshot.CompiledPolicies, error) {
-	return nil, nil
 }

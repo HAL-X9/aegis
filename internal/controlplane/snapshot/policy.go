@@ -54,7 +54,7 @@ const (
 	HeaderOpAddIfAbsent
 )
 
-// HeaderOp is a compact immutable runtime instruction.
+// HeaderInstruction is a compact immutable runtime instruction.
 //
 // Layout is intentionally cache-friendly.
 //
@@ -62,7 +62,7 @@ const (
 //
 // ValueOffset/ValueLength reference bytes inside
 // CompiledHeadersPlan.Values blob.
-type HeaderOp struct {
+type HeaderInstruction struct {
 	HeaderID HeaderID
 	Op       HeaderOpCode
 
@@ -94,7 +94,7 @@ type HeaderOp struct {
 //
 // Runtime must never sort or resolve conflicts.
 type CompiledHeadersPlan struct {
-	Ops []HeaderOp
+	Ops []HeaderInstruction
 
 	// Immutable packed values blob.
 	//

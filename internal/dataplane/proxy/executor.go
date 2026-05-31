@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/aegis/internal/contracts/methodmask"
+	"github.com/aegis/internal/dataplane/policy"
 	"github.com/aegis/internal/dataplane/router"
 )
 
@@ -70,6 +71,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var target string
 	var methodMatch bool
+	var matchedEntry *router.RouteIndexEntry
 
 	// Select the first route candidate that satisfies both method and header
 	// predicates. Build the upstream target URL from the matched route upstream
@@ -79,6 +81,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			methodMatch = true
 			if router.HeadersMatch(candidate.Route.Match.Headers, r.Header) {
 				target = candidate.Route.Upstream + r.URL.EscapedPath()
+				matchedEntry = candidate
 				break
 			}
 			continue
@@ -110,6 +113,11 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	req.Header = r.Header.Clone()
+	if matchedEntry != nil {
+		policy.ExecuteMutations(req.Header, &matchedEntry.Route.Headers.Request)
+	}
+
 	// Execute the upstream request using the configured transport.
 	resp, err := executor.transport.RoundTrip(req)
 	if err != nil {
@@ -120,6 +128,15 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = resp.Body.Close()
 	}()
 
+	for key, values := range resp.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+
+	if matchedEntry != nil {
+		policy.ExecuteMutations(w.Header(), &matchedEntry.Route.Headers.Response)
+	}
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
 }

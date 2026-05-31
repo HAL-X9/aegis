@@ -19,6 +19,9 @@ type CompiledRoute struct {
 
 	// Upstream is a resolved backend target identifier (not a raw URL in ideal design).
 	Upstream string
+
+	// Headers contains pre-compiled tokenized header mutation plans for the request and response paths.
+	Headers CompiledHeaders
 }
 
 // CompiledMatch represents a fully normalized and optimized set of

@@ -15,7 +15,7 @@ func Policy(policies *ir.NormalizedPolicies) (*snapshot.CompiledPolicies, error)
 	}
 
 	estimatedSize := estimateStringsSize(policies)
-	builder := nweHeaderValueBuilder(estimatedSize)
+	builder := newHeaderValueBuilder(estimatedSize)
 
 	compiledHeaders := make([]snapshot.CompiledHeaders, 0, len(policies.Headers))
 
@@ -66,9 +66,9 @@ type headerValueBuilder struct {
 	buf []byte
 }
 
-// nweHeaderValueBuilder initializes the builder with a pre-allocated capacity
+// newHeaderValueBuilder initializes the builder with a pre-allocated capacity
 // to prevent dynamic buffer resizing during compilation.
-func nweHeaderValueBuilder(estimatedSize int) *headerValueBuilder {
+func newHeaderValueBuilder(estimatedSize int) *headerValueBuilder {
 	return &headerValueBuilder{
 		buf: make([]byte, 0, estimatedSize),
 	}

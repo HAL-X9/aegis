@@ -14,10 +14,19 @@ func Policy(policies *ir.NormalizedPolicies) (*snapshot.CompiledPolicies, error)
 		return nil, fmt.Errorf("compile policies configuration: config is nil")
 	}
 
-	// Preallocate slice to avoid dynamic growth during compilation.
-	// compiledHeaders := make([]CompiledHeaders, 0, len(policies.Headers))
+	estimatedSize := estimateStringsSize(policies)
+	builder := nweHeaderValueBuilder(estimatedSize)
 
-	return &snapshot.CompiledPolicies{}, nil
+	compiledHeaders := make([]snapshot.CompiledHeaders, 0, len(policies.Headers))
+
+	for _, policy := range policies.Headers {
+		compiled := compileRouteHeaders(&policy, builder)
+		compiledHeaders = append(compiledHeaders, compiled)
+	}
+
+	return &snapshot.CompiledPolicies{
+		Headers: compiledHeaders,
+	}, nil
 }
 
 // resolveHeaderID maps standard HTTP header string names to their
@@ -141,4 +150,31 @@ func compileHeaderOps(
 		})
 	}
 	return instructions
+}
+
+// estimateStringsSize scans the IR policies to calculate the total byte length
+// required for all static header values combined to optimize memory pre-allocation.
+func estimateStringsSize(policies *ir.NormalizedPolicies) int {
+	if policies == nil {
+		return 0
+	}
+
+	var total int
+	for _, h := range policies.Headers {
+		for _, value := range h.Request.Set {
+			total += len(value)
+		}
+		for _, value := range h.Request.Add {
+			total += len(value)
+		}
+
+		for _, value := range h.Response.Set {
+			total += len(value)
+		}
+		for _, value := range h.Response.Add {
+			total += len(value)
+		}
+	}
+
+	return total
 }

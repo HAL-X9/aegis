@@ -2,6 +2,7 @@ package compile
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/aegis/internal/controlplane/ir"
 	"github.com/aegis/internal/controlplane/snapshot"
@@ -17,10 +18,20 @@ func Policy(policies *ir.NormalizedPolicies) (*snapshot.CompiledPolicies, error)
 	estimatedSize := estimateStringsSize(policies)
 	builder := newHeaderValueBuilder(estimatedSize)
 
-	compiledHeaders := make([]snapshot.CompiledHeaders, 0, len(policies.Headers))
+	policyNames := make([]string, 0, len(policies.Headers))
+	for name := range policies.Headers {
+		policyNames = append(policyNames, name)
+	}
+	sort.Strings(policyNames)
 
-	for _, policy := range policies.Headers {
-		compiled := compileRouteHeaders(&policy, builder)
+	compiledHeaders := make([]snapshot.CompiledHeaders, 0, len(policyNames))
+
+	for _, name := range policyNames {
+		compiled, err := compileRouteHeaders(new(policies.Headers[name]), builder)
+		if err != nil {
+			return nil, fmt.Errorf("compile headers policy %q: %w", name, err)
+		}
+
 		compiledHeaders = append(compiledHeaders, compiled)
 	}
 
@@ -31,32 +42,32 @@ func Policy(policies *ir.NormalizedPolicies) (*snapshot.CompiledPolicies, error)
 
 // resolveHeaderID maps standard HTTP header string names to their
 // strongly-typed numeric IDs for O(1) evaluation in the runtime.
-func resolveHeaderID(name string) snapshot.HeaderID {
+func resolveHeaderID(name string) (snapshot.HeaderID, error) {
 	switch name {
 	case "Host":
-		return snapshot.HeaderHost
+		return snapshot.HeaderHost, nil
 	case "Content-Type":
-		return snapshot.HeaderContentType
+		return snapshot.HeaderContentType, nil
 	case "Content-Length":
-		return snapshot.HeaderContentLength
+		return snapshot.HeaderContentLength, nil
 	case "Authorization":
-		return snapshot.HeaderAuthorization
+		return snapshot.HeaderAuthorization, nil
 	case "X-Forwarded-For":
-		return snapshot.HeaderXForwardedFor
+		return snapshot.HeaderXForwardedFor, nil
 	case "X-Forwarded-Proto":
-		return snapshot.HeaderXForwardedProto
-	case "X-Request-ID":
-		return snapshot.HeaderXRequestID
+		return snapshot.HeaderXForwardedProto, nil
+	case "X-Request-ID", "X-Request-Id":
+		return snapshot.HeaderXRequestID, nil
 	case "Server":
-		return snapshot.HeaderServer
+		return snapshot.HeaderServer, nil
 	case "X-Content-Type-Options":
-		return snapshot.HeaderXContentTypeOptions
+		return snapshot.HeaderXContentTypeOptions, nil
 	case "X-Frame-Options":
-		return snapshot.HeaderXFrameOptions
-	case "X-XSS-Protection":
-		return snapshot.HeaderXXSSProtection
+		return snapshot.HeaderXFrameOptions, nil
+	case "X-XSS-Protection", "X-Xss-Protection":
+		return snapshot.HeaderXXSSProtection, nil
 	default:
-		return snapshot.HeaderUnknown
+		return snapshot.HeaderUnknown, fmt.Errorf("unsupported header %q", name)
 	}
 }
 
@@ -66,16 +77,12 @@ type headerValueBuilder struct {
 	buf []byte
 }
 
-// newHeaderValueBuilder initializes the builder with a pre-allocated capacity
-// to prevent dynamic buffer resizing during compilation.
 func newHeaderValueBuilder(estimatedSize int) *headerValueBuilder {
 	return &headerValueBuilder{
 		buf: make([]byte, 0, estimatedSize),
 	}
 }
 
-// Append writes the string value to the shared buffer and returns
-// its absolute memory coordinates (offset and length).
 func (b *headerValueBuilder) Append(value string) (offset uint32, length uint16) {
 	offset = uint32(len(b.buf))
 	b.buf = append(b.buf, value...)
@@ -83,77 +90,119 @@ func (b *headerValueBuilder) Append(value string) (offset uint32, length uint16)
 	return offset, length
 }
 
-// compileRouteHeaders compiles both request and response header mutation rules
-// for a single route into a unified snapshot format, sharing the same underlying value buffer.
+// compileRouteHeaders compiles request and response header mutation rules
+// into a unified snapshot format.
 func compileRouteHeaders(
 	headers *ir.NormalizedHeaders,
 	builder *headerValueBuilder,
-) snapshot.CompiledHeaders {
+) (snapshot.CompiledHeaders, error) {
+
 	if headers == nil {
-		return snapshot.CompiledHeaders{}
+		return snapshot.CompiledHeaders{}, nil
+	}
+
+	requestOps, err := compileHeaderOps(&headers.Request, builder)
+	if err != nil {
+		return snapshot.CompiledHeaders{}, fmt.Errorf("compile request header operations: %w", err)
+	}
+
+	responseOps, err := compileHeaderOps(&headers.Response, builder)
+	if err != nil {
+		return snapshot.CompiledHeaders{}, fmt.Errorf("compile response header operations: %w", err)
 	}
 
 	return snapshot.CompiledHeaders{
 		Request: snapshot.CompiledHeadersPlan{
-			Ops:    compileHeaderOps(&headers.Request, builder),
+			Ops:    requestOps,
 			Values: builder.buf,
 		},
 		Response: snapshot.CompiledHeadersPlan{
-			Ops:    compileHeaderOps(&headers.Response, builder),
+			Ops:    responseOps,
 			Values: builder.buf,
 		},
-	}
+	}, nil
 }
 
-// compileHeaderOps transforms high-level normalized operations into a flat slice
-// of compact binary instructions, enforcing strict semantic execution order:
-// 1. Remove, 2. Set, 3. AddIfAbsent.
+// compileHeaderOps transforms normalized operations into compact instructions.
 func compileHeaderOps(
 	ops *ir.NormalizedHeadersOps,
 	builder *headerValueBuilder,
-) []snapshot.HeaderInstruction {
+) ([]snapshot.HeaderInstruction, error) {
+
 	if ops == nil {
-		return nil
+		return nil, nil
 	}
 
 	estimatedOps := len(ops.Remove) + len(ops.Set) + len(ops.Add)
 	if estimatedOps == 0 {
-		return nil
+		return nil, nil
 	}
 
 	instructions := make([]snapshot.HeaderInstruction, 0, estimatedOps)
 
 	for _, name := range ops.Remove {
+		headerID, err := resolveHeaderID(name)
+		if err != nil {
+			return nil, err
+		}
+
 		instructions = append(instructions, snapshot.HeaderInstruction{
-			HeaderID: resolveHeaderID(name),
+			HeaderID: headerID,
 			Op:       snapshot.HeaderOpRemove,
 		})
 	}
 
-	for name, value := range ops.Set {
-		offset, length := builder.Append(value)
+	setNames := sortedStringMapKeys(ops.Set)
+	for _, name := range setNames {
+		headerID, err := resolveHeaderID(name)
+		if err != nil {
+			return nil, err
+		}
+
+		offset, length := builder.Append(ops.Set[name])
+
 		instructions = append(instructions, snapshot.HeaderInstruction{
-			HeaderID:    resolveHeaderID(name),
+			HeaderID:    headerID,
 			Op:          snapshot.HeaderOpSet,
 			ValueOffset: offset,
 			ValueLength: length,
 		})
 	}
 
-	for name, value := range ops.Add {
-		offset, length := builder.Append(value)
+	addNames := sortedStringMapKeys(ops.Add)
+	for _, name := range addNames {
+		headerID, err := resolveHeaderID(name)
+		if err != nil {
+			return nil, err
+		}
+
+		offset, length := builder.Append(ops.Add[name])
+
 		instructions = append(instructions, snapshot.HeaderInstruction{
-			HeaderID:    resolveHeaderID(name),
+			HeaderID:    headerID,
 			Op:          snapshot.HeaderOpAddIfAbsent,
 			ValueOffset: offset,
 			ValueLength: length,
 		})
 	}
-	return instructions
+
+	return instructions, nil
 }
 
-// estimateStringsSize scans the IR policies to calculate the total byte length
-// required for all static header values combined to optimize memory pre-allocation.
+func sortedStringMapKeys(values map[string]string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// estimateStringsSize calculates total bytes for header values.
 func estimateStringsSize(policies *ir.NormalizedPolicies) int {
 	if policies == nil {
 		return 0
@@ -161,18 +210,17 @@ func estimateStringsSize(policies *ir.NormalizedPolicies) int {
 
 	var total int
 	for _, h := range policies.Headers {
-		for _, value := range h.Request.Set {
-			total += len(value)
+		for _, v := range h.Request.Set {
+			total += len(v)
 		}
-		for _, value := range h.Request.Add {
-			total += len(value)
+		for _, v := range h.Request.Add {
+			total += len(v)
 		}
-
-		for _, value := range h.Response.Set {
-			total += len(value)
+		for _, v := range h.Response.Set {
+			total += len(v)
 		}
-		for _, value := range h.Response.Add {
-			total += len(value)
+		for _, v := range h.Response.Add {
+			total += len(v)
 		}
 	}
 

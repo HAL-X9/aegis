@@ -59,19 +59,3 @@ type HeaderPredicate struct {
 	//   - len(AllowedValues) > 0: at least one request value MUST equal one of AllowedValues
 	AllowedValues []string
 }
-
-// Decision represents the result of route evaluation in the dataplane.
-//
-// It is used to classify request routing outcomes without string allocations.
-type Decision uint8
-
-const (
-	// DecisionRouteFound indicates a successful route match.
-	DecisionRouteFound Decision = iota
-
-	// DecisionMethodNotAllowed indicates route match but method mismatch.
-	DecisionMethodNotAllowed
-
-	// DecisionPathNotMatched indicates no route matched the request path.
-	DecisionPathNotMatched
-)

@@ -21,7 +21,7 @@ func resolveHeaderName(id snapshot.HeaderID) string {
 	case snapshot.HeaderXForwardedProto:
 		return "X-Forwarded-Proto"
 	case snapshot.HeaderXRequestID:
-		return "X-Request-ID"
+		return "X-Request-Id"
 	case snapshot.HeaderServer:
 		return "Server"
 	case snapshot.HeaderXContentTypeOptions:
@@ -29,7 +29,7 @@ func resolveHeaderName(id snapshot.HeaderID) string {
 	case snapshot.HeaderXFrameOptions:
 		return "X-Frame-Options"
 	case snapshot.HeaderXXSSProtection:
-		return "X-XSS-Protection"
+		return "X-Xss-Protection"
 	default:
 		return ""
 	}

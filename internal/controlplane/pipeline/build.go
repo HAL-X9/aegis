@@ -18,12 +18,19 @@ func Build(config *schema.GatewayConfig) (*snapshot.CompiledConfig, error) {
 		return nil, fmt.Errorf("build compiled configuration: gateway config is nil")
 	}
 
-	routes, err := BuildRoutes(config)
+	normalizedRoutes := normalize.Routes(config.Routes)
+
+	normalizedPolicies, err := normalize.Policies(&config.Policies)
+	if err != nil {
+		return nil, fmt.Errorf("build compiled configuration: policy normalization failed: %w", err)
+	}
+
+	routes, err := compile.Routes(normalizedRoutes, normalizedPolicies)
 	if err != nil {
 		return nil, fmt.Errorf("build compiled configuration: route build failed: %w", err)
 	}
 
-	policies, err := BuildPolicies(&config.Policies)
+	policies, err := compile.Policy(normalizedPolicies)
 	if err != nil {
 		return nil, fmt.Errorf("build compiled configuration: policy build failed: %w", err)
 	}
@@ -44,7 +51,7 @@ func BuildRoutes(config *schema.GatewayConfig) ([]snapshot.CompiledRoute, error)
 
 	normalizedRoutes := normalize.Routes(config.Routes)
 
-	compiledRoutes, err := compile.Routes(normalizedRoutes)
+	compiledRoutes, err := compile.Routes(normalizedRoutes, nil)
 	if err != nil {
 		return nil, fmt.Errorf("compile routes configuration: route compilation failed: %w", err)
 	}

@@ -35,6 +35,7 @@ func Routes(routes []schema.Route) []ir.Route {
 				Host:   strings.ToLower(route.Upstream.Host),
 				Port:   route.Upstream.Port,
 			},
+			Policies: normalizePolicyRefs(route.Policies),
 		})
 	}
 
@@ -93,4 +94,19 @@ func normalizeHeaders(headers map[string][]string) map[string][]string {
 	}
 
 	return normalized
+}
+
+func normalizePolicyRefs(policies []schema.Policy) []ir.PolicyRef {
+	if len(policies) == 0 {
+		return nil
+	}
+
+	out := make([]ir.PolicyRef, 0, len(policies))
+	for _, policy := range policies {
+		out = append(out, ir.PolicyRef{
+			Name: strings.TrimSpace(policy.Name),
+		})
+	}
+
+	return out
 }

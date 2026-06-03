@@ -12,7 +12,7 @@ import (
 
 func TestRoutes(t *testing.T) {
 	t.Run("empty routes", func(t *testing.T) {
-		out, err := Routes(nil)
+		out, err := Routes(nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -37,7 +37,7 @@ func TestRoutes(t *testing.T) {
 			},
 		}
 
-		out, err := Routes(routes)
+		out, err := Routes(routes, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +79,11 @@ func TestRoutes(t *testing.T) {
 			},
 		}
 
-		out, err := Routes(routes)
+		policies := ir.NormalizedPolicies{
+			Headers: make(map[string]ir.NormalizedHeaders),
+		}
+
+		out, err := Routes(routes, &policies)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -105,7 +109,11 @@ func TestRoutes(t *testing.T) {
 			},
 		}
 
-		_, err := Routes(routes)
+		policies := ir.NormalizedPolicies{
+			Headers: make(map[string]ir.NormalizedHeaders),
+		}
+
+		_, err := Routes(routes, &policies)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -146,7 +154,11 @@ func TestRoutes(t *testing.T) {
 			},
 		}
 
-		out, err := Routes(routes)
+		policies := ir.NormalizedPolicies{
+			Headers: make(map[string]ir.NormalizedHeaders),
+		}
+
+		out, err := Routes(routes, &policies)
 		if err != nil {
 			t.Fatal(err)
 		}

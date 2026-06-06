@@ -27,7 +27,8 @@ func Policy(policies *ir.NormalizedPolicies) (*snapshot.CompiledPolicies, error)
 	compiledHeaders := make([]snapshot.CompiledHeaders, 0, len(policyNames))
 
 	for _, name := range policyNames {
-		compiled, err := compileRouteHeaders(new(policies.Headers[name]), builder)
+		h := policies.Headers[name]
+		compiled, err := compileRouteHeaders(&h, builder)
 		if err != nil {
 			return nil, fmt.Errorf("compile headers policy %q: %w", name, err)
 		}

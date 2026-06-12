@@ -460,7 +460,7 @@ func TestEstimateStringsSize_countsSetAndAddValuesOnly(t *testing.T) {
 				Request: ir.NormalizedHeadersOps{
 					Set:    map[string]string{"Host": "abc"},          // 3
 					Add:    map[string]string{"Content-Type": "json"}, // 4
-					Remove: []string{"Server"},                         // not counted
+					Remove: []string{"Server"},                        // not counted
 				},
 				Response: ir.NormalizedHeadersOps{
 					Set: map[string]string{"X-Frame-Options": "DE"}, // 2

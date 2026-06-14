@@ -1,0 +1,13 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/aegis/internal/dataplane/router
+cpu: Apple M4
+BenchmarkRequestMatch/methods=any/headers=none-10         	17416270	       218.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequestMatch/methods=any/headers=none-10         	18490078	       195.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequestMatch/methods=any/headers=none-10         	18477066	       195.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequestMatch/methods=any/headers=none-10         	18509148	       195.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequestMatch/methods=any/headers=none-10         	18546320	       197.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequestMatch/methods=any/headers=none-10         	18260910	       198.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequestMatch/methods=any/headers=none-10         	18389026	       196.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequestMatch/methods=any/headers=none-10         	signal: interrupt
+FAIL	github.com/aegis/internal/dataplane/router	29.180s

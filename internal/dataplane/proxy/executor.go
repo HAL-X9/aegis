@@ -90,7 +90,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// At least one route matched the path, but none accepted the method.
 	if target == "" {
-		if methodMatch == false {
+		if !methodMatch {
 			http.Error(w, "method not allowed for matched route", http.StatusMethodNotAllowed)
 			return
 		}

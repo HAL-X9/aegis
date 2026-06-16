@@ -118,6 +118,128 @@ func TestValidatePolicies_errorMentionsPolicyName(t *testing.T) {
 	assertErrorContains(t, validatePolicies(policy), `"alpha"`)
 }
 
+func TestValidatePolicies_emptyPolicyNameRejected(t *testing.T) {
+	t.Parallel()
+	policy := &schema.Policies{
+		Headers: map[string]schema.Headers{
+			"": {
+				Response: schema.HeadersOps{
+					Add: map[string]string{"X-Frame-Options": "DENY"},
+				},
+			},
+		},
+	}
+	assertErrorContains(t, validatePolicies(policy), "policy name", "must not be empty")
+}
+
+func TestValidatePolicies_conflictReportsPolicyAndDirection(t *testing.T) {
+	t.Parallel()
+	policy := &schema.Policies{
+		Headers: map[string]schema.Headers{
+			"security": {
+				Response: schema.HeadersOps{
+					Set:    map[string]string{"X-Frame-Options": "DENY"},
+					Remove: []string{"X-Frame-Options"},
+				},
+			},
+		},
+	}
+	assertErrorContains(t, validatePolicies(policy),
+		`"security"`,
+		"response",
+		`"X-Frame-Options"`,
+	)
+}
+
+// ────────────────── validateHeadersOps: op conflicts ──────────────────────
+
+func TestValidateHeadersOps_conflictAddAndSet(t *testing.T) {
+	t.Parallel()
+	ops := &schema.HeadersOps{
+		Add: map[string]string{"X-Token": "a"},
+		Set: map[string]string{"X-Token": "b"},
+	}
+	assertErrorContains(t, validateHeadersOps("request", ops),
+		`"X-Token"`,
+		`"add"`,
+		`"set"`,
+	)
+}
+
+func TestValidateHeadersOps_conflictSetAndRemove(t *testing.T) {
+	t.Parallel()
+	ops := &schema.HeadersOps{
+		Set:    map[string]string{"Server": "aegis"},
+		Remove: []string{"Server"},
+	}
+	assertErrorContains(t, validateHeadersOps("response", ops),
+		`"Server"`,
+		`"set"`,
+		`"remove"`,
+	)
+}
+
+func TestValidateHeadersOps_conflictAddAndRemove(t *testing.T) {
+	t.Parallel()
+	ops := &schema.HeadersOps{
+		Add:    map[string]string{"X-Request-ID": "gen"},
+		Remove: []string{"X-Request-ID"},
+	}
+	assertErrorContains(t, validateHeadersOps("request", ops),
+		`"X-Request-ID"`,
+		`"add"`,
+		`"remove"`,
+	)
+}
+
+func TestValidateHeadersOps_conflictIsCaseInsensitive(t *testing.T) {
+	t.Parallel()
+	ops := &schema.HeadersOps{
+		Set:    map[string]string{"X-Frame-Options": "DENY"},
+		Remove: []string{"x-frame-options"},
+	}
+	assertErrorContains(t, validateHeadersOps("response", ops),
+		`"set"`,
+		`"remove"`,
+	)
+}
+
+func TestValidateHeadersOps_duplicateInRemove(t *testing.T) {
+	t.Parallel()
+	ops := &schema.HeadersOps{
+		Remove: []string{"Server", "server"},
+	}
+	assertErrorContains(t, validateHeadersOps("response", ops),
+		"more than once",
+		`"remove"`,
+	)
+}
+
+func TestValidateHeadersOps_sameHeaderAcrossDirectionsIsValid(t *testing.T) {
+	t.Parallel()
+	// A header may legitimately be added on the request path and removed on the
+	// response path: conflicts are scoped to a single direction only.
+	h := &schema.Headers{
+		Request:  schema.HeadersOps{Add: map[string]string{"X-Trace": "1"}},
+		Response: schema.HeadersOps{Remove: []string{"X-Trace"}},
+	}
+	if err := validateHeaders("cross-direction", h); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateHeadersOps_allThreeGroupsDistinctIsValid(t *testing.T) {
+	t.Parallel()
+	ops := &schema.HeadersOps{
+		Add:    map[string]string{"X-A": "1"},
+		Set:    map[string]string{"X-B": "2"},
+		Remove: []string{"X-C"},
+	}
+	if err := validateHeadersOps("request", ops); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // ─────────────────────── validateHeaders ──────────────────────────────────
 
 func TestValidateHeaders_nilReturnsError(t *testing.T) {

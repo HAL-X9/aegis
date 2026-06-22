@@ -1,0 +1,12 @@
+# golangci-lint configuration (schema v2).
+# Pinned in CI to golangci-lint v2.12.2 (verified against Go 1.26).
+version: "2"
+
+linters:
+  # Standard set: errcheck, govet, ineffassign, staticcheck, unused.
+  # govet here subsumes the standalone `go vet` step.
+  default: standard
+
+formatters:
+  enable:
+    - gofmt

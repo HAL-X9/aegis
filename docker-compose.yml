@@ -1,0 +1,21 @@
+services:
+  aegis:
+    build: .
+    image: aegis:latest
+    container_name: aegis
+    ports:
+      - "8080:8080"
+      - "18080:18080"
+    environment:
+      AEGIS_RUNTIME_CONFIG_PATH: /app/configs/aegis.yaml
+      AEGIS_ROUTES_CONFIG_PATH: /app/configs/gateway.yaml
+    volumes:
+      - ./configs:/app/configs
+    restart: on-failure
+
+  mock-upstream:
+    image: python:3.13-alpine
+    working_dir: /srv
+    command: python -m http.server 8082
+    volumes:
+      - ./mock:/srv

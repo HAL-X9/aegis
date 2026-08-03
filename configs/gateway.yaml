@@ -23,7 +23,7 @@ routes:
         X-Correlation-Id: []
     upstream:
       scheme: http
-      host: localhost
+      host: mock-upstream
       port: 8082
     policies:
       # - name: cors-private

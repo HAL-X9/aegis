@@ -1,6 +1,6 @@
 # Aegis
 
-**Gateway — one runtime for routing, policy, proxy, and observability.**
+Gateway runtime for routing, policy enforcement, proxying, and observability.
 
 Aegis is an edge-oriented execution environment: declarative configuration defines how inbound traffic is matched, authorized or constrained, forwarded to upstream services, and observed. The same binary is intended to run on bare metal, in containers, and in orchestrated environments without changing the core semantics of routing, policy evaluation, and proxy behavior.
 
@@ -9,32 +9,24 @@ The project is under active development; public interfaces and configuration sch
 
 ## Quick start
 
-This section describes the minimum path from a clean clone to a running process on your workstation. It assumes a supported Go toolchain and network access only for module resolution on first build.
+Run Aegis locally from source or using Docker.
 
-### Prerequisites
+#### Run from source.
 
-Before you run Aegis locally, make sure:
+```bash
+git clone https://github.com/HAL-X9/aegis.git
+cd aegis
+go mod download
+go run ./cmd -config configs/aegis.yaml -routes configs/gateway.yaml
+```
 
-- Go **1.26.0+** is installed (`go.mod` is the source of truth).
-- You have a valid runtime YAML config (for example, `configs/aegis.yaml`).
-- You have a routes manifest (for example, `configs/gateway.yaml`).
+#### Run with Docker.
 
-### Run (local development)
-
-1. Clone the repository and change to the repository root.
-2. Resolve dependencies (optional if modules are already cached):
-
-   ```bash
-   go mod download
-   ```
-
-3. Start the process with explicit runtime and routes configuration paths:
-
-   ```bash
-   go run ./cmd -config configs/aegis.yaml -routes configs/gateway.yaml
-   ```
-
-   The process starts two listeners declared in the runtime file: public on **`:8080`** and system on **`127.0.0.1:18080`** in the sample configuration.
+```bash
+git clone https://github.com/HAL-X9/aegis.git
+cd aegis
+docker compose up -d --build
+```
 
 #### Alternative: environment-based configuration
 

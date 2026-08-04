@@ -17,7 +17,7 @@ type CompiledRoute struct {
 	// Match contains all predicates required to determine route applicability.
 	Match CompiledMatch
 
-	// Upstream is a resolved backend target identifier (not a raw URL in ideal design).
+	// Upstream is a resolved backend target identifier.
 	Upstream string
 
 	// Headers contains pre-compiled tokenized header mutation plans for the request and response paths.

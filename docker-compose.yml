@@ -3,6 +3,7 @@ services:
     build: .
     image: aegis:latest
     container_name: aegis
+    read_only: true
     ports:
       - "8080:8080"
       - "18080:18080"
@@ -10,7 +11,20 @@ services:
       AEGIS_RUNTIME_CONFIG_PATH: /app/configs/aegis.yaml
       AEGIS_ROUTES_CONFIG_PATH: /app/configs/gateway.yaml
     volumes:
-      - ./configs:/app/configs
+      - ./configs:/app/configs:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "-q",
+          "http://127.0.0.1:18080/livez"
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     restart: on-failure
 
   mock-upstream:

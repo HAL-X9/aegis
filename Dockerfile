@@ -14,9 +14,13 @@ RUN CGO_ENABLED=0 \
 
 FROM alpine:3.24
 
+RUN adduser -D -u 1001 aegis
+
 WORKDIR /app
 
-COPY --from=builder /build/main .
+COPY --from=builder --chown=aegis:aegis /build/main .
+
+USER aegis
 
 ENTRYPOINT ["/app/main"]
 

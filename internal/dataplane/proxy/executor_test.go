@@ -209,6 +209,53 @@ func TestExecutor(t *testing.T) {
 		}
 	})
 
+	t.Run("preserves query parameters when building upstream target", func(t *testing.T) {
+		engine := buildTestEngine(t, &snapshot.CompiledConfig{
+			Routes: []snapshot.CompiledRoute{
+				{
+					Name: "api",
+					Match: snapshot.CompiledMatch{
+						PathPrefix: "/api/profile",
+						Methods:    methodmask.MethodAll,
+					},
+					Upstream: "http://upstream:8080",
+				},
+			},
+		})
+
+		var gotURL string
+
+		exec := NewExecutor(engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			gotURL = r.URL.String()
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("ok")),
+				Header:     make(http.Header),
+			}, nil
+		}))
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/api/profile?id=123&sort=name",
+			nil,
+		)
+
+		exec.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		if gotURL != "http://upstream:8080/api/profile?id=123&sort=name" {
+			t.Fatalf("upstream URL = %q, want %q",
+				gotURL,
+				"http://upstream:8080/api/profile?id=123&sort=name",
+			)
+		}
+	})
+
 	t.Run("proxies response for first matching route", func(t *testing.T) {
 		engine := buildTestEngine(t, &snapshot.CompiledConfig{
 			Routes: []snapshot.CompiledRoute{

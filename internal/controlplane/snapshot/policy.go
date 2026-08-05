@@ -33,6 +33,16 @@ const (
 	HeaderXFrameOptions
 	HeaderXXSSProtection
 
+	// hop-by-hop headers
+	HeaderConnection
+	HeaderKeepAlive
+	HeaderProxyAuthenticate
+	HeaderProxyAuthorization
+	HeaderTE
+	HeaderTrailer
+	HeaderTransferEncoding
+	HeaderUpgrade
+
 	// HeaderDynamicStart Dynamic headers begin here.
 	HeaderDynamicStart
 )

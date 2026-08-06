@@ -14,6 +14,8 @@ func (trie *RadixTrie) Lookup(path []byte) []*RouteIndexEntry {
 	slash := byte('/')
 	offset := 0
 
+	var lastCandidate *RadixNode
+
 	for i := 0; i <= len(path); i++ {
 		var segment []byte
 		var next *RadixNode
@@ -38,12 +40,23 @@ func (trie *RadixTrie) Lookup(path []byte) []*RouteIndexEntry {
 			}
 
 			if next == nil {
+				if lastCandidate != nil {
+					return lastCandidate.candidates
+				}
 				return nil
 			}
 
 			node = next
+
+			if len(node.candidates) > 0 {
+				lastCandidate = node
+			}
 		}
 	}
 
-	return node.candidates
+	if lastCandidate != nil {
+		return lastCandidate.candidates
+	}
+
+	return nil
 }

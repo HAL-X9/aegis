@@ -142,8 +142,19 @@ func requestMethodBit(method string) methodmask.MethodMask {
 // BenchmarkLookup measures the radix path lookup in isolation across table
 // sizes. This is the floor cost every request pays regardless of policy.
 func BenchmarkLookup(b *testing.B) {
-	for _, size := range []int{16, 64, 256, 1024} {
+	for _, size := range []int{16, 64, 256, 512, 1024, 2048, 4096} {
 		engine, path := buildBenchEngine(b, size, methodUnrestricted, headerNone)
+
+		nodes, maxChildren, avgChildren := trieStats(engine.trie.root)
+
+		b.Logf(
+			"routes=%d nodes=%d maxChildren=%d avgChildren=%.2f",
+			size,
+			nodes,
+			maxChildren,
+			avgChildren,
+		)
+
 		b.Run("routes="+strconv.Itoa(size), func(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -154,6 +165,37 @@ func BenchmarkLookup(b *testing.B) {
 			sinkEntries = out
 		})
 	}
+}
+
+func trieStats(root *RadixNode) (nodes int, maxChildren int, avgChildren float64) {
+	if root == nil {
+		return 0, 0, 0
+	}
+
+	totalChildren := 0
+
+	var walk func(*RadixNode)
+
+	walk = func(node *RadixNode) {
+		nodes++
+
+		children := len(node.children)
+		totalChildren += children
+
+		if children > maxChildren {
+			maxChildren = children
+		}
+
+		for _, child := range node.children {
+			walk(child)
+		}
+	}
+
+	walk(root)
+
+	avgChildren = float64(totalChildren) / float64(nodes)
+
+	return
 }
 
 // BenchmarkMethodAdmission measures only the method resolution + bitmask check,

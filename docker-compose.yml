@@ -30,6 +30,6 @@ services:
   mock-upstream:
     image: python:3.13-alpine
     working_dir: /srv
-    command: python -m http.server 8082
+    command: python server.py
     volumes:
       - ./mock:/srv

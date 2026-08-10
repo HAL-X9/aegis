@@ -6,6 +6,7 @@ import (
 
 	"github.com/aegis/internal/contracts/methodmask"
 	"github.com/aegis/internal/dataplane/policy"
+	"github.com/aegis/internal/dataplane/request"
 	"github.com/aegis/internal/dataplane/router"
 )
 
@@ -120,6 +121,8 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if matchedEntry != nil {
 		policy.ExecuteMutations(req.Header, &matchedEntry.Route.Headers.Request)
 	}
+
+	request.RemoveHopHeaders(req.Header)
 
 	// Execute the upstream request using the configured transport.
 	resp, err := executor.transport.RoundTrip(req)

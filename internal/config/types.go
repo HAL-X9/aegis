@@ -58,9 +58,14 @@ type Listeners struct {
 	System HTTP `yaml:"system"`
 }
 
+type Proxy struct {
+	TrustedProxies []string `yaml:"trusted_proxies"`
+}
+
 // Runtime is the unmarshaled root of the app YAML document; field tags match on-disk layout.
 type Runtime struct {
 	Listeners         Listeners         `yaml:"listeners"`
 	UpstreamTransport UpstreamTransport `yaml:"upstream_transport"`
+	Proxy             Proxy             `yaml:"proxy"`
 	Observability     Observability     `yaml:"observability"`
 }

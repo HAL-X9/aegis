@@ -18,6 +18,12 @@ listeners:
       idle_timeout: 30s
     max_header_bytes: 262144
 
+proxy:
+  trusted_proxies:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+
 upstream_transport:
   max_idle_conns: 1024
   max_idle_conns_per_host: 128

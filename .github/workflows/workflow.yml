@@ -1,4 +1,4 @@
-name: workflow.yml
+name: CI
 on:
   push:
     branches: [main]

@@ -1,19 +1,19 @@
 package ir
 
-// Route represents a canonical route definition within the normalized
-// intermediate representation.
+// Route represents a canonical route definition within the intermediate
+// representation.
 //
-// A Route defines request matching rules, upstream forwarding configuration,
-// and attached policy references prepared for subsequent compilation stages.
+// A Route defines request matching rules, a target service reference, and
+// attached policy references prepared for subsequent compilation stages.
 type Route struct {
 	// Name uniquely identifies the route within the configuration scope.
 	Name string
 
+	// Service identifies the normalized service targeted by the route.
+	Service string
+
 	// Match defines normalized request matching criteria.
 	Match Match
-
-	// Upstream defines the normalized upstream destination configuration.
-	Upstream Upstream
 
 	// Policies contains ordered policy references attached to the route.
 	//
@@ -37,19 +37,6 @@ type Match struct {
 	//
 	// Header names are stored in canonical MIME header form.
 	Headers map[string][]string
-}
-
-// Upstream defines a normalized upstream target configuration used for
-// request forwarding.
-type Upstream struct {
-	// Scheme defines the upstream transport scheme.
-	Scheme string
-
-	// Host defines the upstream hostname or network address.
-	Host string
-
-	// Port defines the upstream network port.
-	Port int
 }
 
 // PolicyRef represents a normalized reference to a reusable policy

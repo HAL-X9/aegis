@@ -31,7 +31,8 @@ type RadixTrie struct {
 
 // RouteIndexEntry groups route candidates and their method mask.
 type RouteIndexEntry struct {
-	Route *snapshot.CompiledRoute
+	Route    *snapshot.CompiledRoute
+	Upstream string
 }
 
 // Insert registers a route entry under the provided normalized path.

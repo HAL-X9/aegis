@@ -15,6 +15,10 @@ func Validate(gatewayCfg *schema.GatewayConfig) error {
 		return fmt.Errorf("gateway configuration is nil")
 	}
 
+	if err := validateServices(gatewayCfg.Services); err != nil {
+		return fmt.Errorf("gateway config validation failed: services are invalid: %w", err)
+	}
+
 	if err := validateRoutes(gatewayCfg.Routes); err != nil {
 		return fmt.Errorf("gateway config validation failed: routes are invalid: %w", err)
 	}

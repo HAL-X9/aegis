@@ -1,16 +1,17 @@
 package snapshot
 
-// CompiledConfig is an immutable snapshot of all compiled routing rules.
+// CompiledConfig is an immutable runtime snapshot produced by the control plane.
 //
-// It is produced by the control plane and loaded into the dataplane as a
-// read-only structure for request evaluation.
-//
-// Key property:
-//   - MUST NOT be mutated after initialization
+// It is consumed by the dataplane as read-only state and must not be mutated
+// after publication.
 type CompiledConfig struct {
+	// Services contains compiled upstream service definitions addressable by name.
+	Services CompiledServices
+
 	// Routes is an ordered list of compiled routing rules.
 	// Order may define priority (first match wins depending on router implementation).
 	Routes []CompiledRoute
 
+	// Policies contains reusable compiled policy plans.
 	Policies CompiledPolicies
 }

@@ -99,31 +99,40 @@ func buildBenchEngine(tb testing.TB, size int, mm methodMode, hm headerMode) (*E
 	}
 
 	routes := make([]snapshot.CompiledRoute, 0, size)
+	services := make([]snapshot.CompiledService, 0, size)
+
 	for i := 0; i < size; i++ {
 		id := strconv.Itoa(i)
+
+		services = append(services, snapshot.CompiledService{
+			Name:     "svc-" + id,
+			Upstream: "http://upstream-" + id + ".internal:8080",
+		})
+
 		routes = append(routes, snapshot.CompiledRoute{
-			Name: "svc-" + id,
+			Name:    "svc-" + id,
+			Service: snapshot.ServiceID(i),
 			Match: snapshot.CompiledMatch{
 				PathPrefix: "/api/v1/service-" + id + "/resource",
 				Methods:    mask,
 				Headers:    preds,
 			},
-			Upstream: "http://upstream-" + id + ".internal:8080",
 		})
 	}
 
-	engine, err := BuildEngine(&snapshot.CompiledConfig{Routes: routes})
+	engine, err := BuildEngine(&snapshot.CompiledConfig{
+		Services: snapshot.CompiledServices{
+			Items: services,
+		},
+		Routes: routes,
+	})
 	if err != nil {
 		tb.Fatalf("BuildEngine: %v", err)
 	}
 
-	// Resolve a route in the middle of the table to avoid best/worst-case bias
-	// from edge ordering of sibling children.
 	target := strconv.Itoa(size / 2)
 	path := []byte("/api/v1/service-" + target + "/resource")
 
-	// Sanity check the fixture so a broken setup fails loudly rather than
-	// silently benchmarking a no-match path.
 	if got := engine.Lookup(path); len(got) == 0 {
 		tb.Fatalf("fixture path %q did not resolve to a route", path)
 	}

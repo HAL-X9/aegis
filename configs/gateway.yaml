@@ -1,17 +1,21 @@
 # version: routeconfig/v1
 # kind: RouteConfig
 
-routes:
-  - name: model-health
-    match:
-      path_prefix: /model/v1/healthz
-      methods: [GET]
+# ------------------------ Services ------------------------
+
+services:
+  user-profile:
     upstream:
       scheme: http
-      host: localhost
-      port: 8081
+      host: mock-upstream
+      port: 8082
+
+# ------------------------ Routes ------------------------
+
+routes:
 
   - name: user-profile
+    service: user-profile
     match:
       path_prefix: /api/v1/profile
       methods: [GET]
@@ -21,34 +25,16 @@ routes:
         X-Client-Channel: [web, mobile]
         X-Device-Id: []
         X-Correlation-Id: []
-    upstream:
-      scheme: http
-      host: mock-upstream
-      port: 8082
     policies:
-      # - name: cors-private
-      # - name: authn
-      # - name: authz
       - name: security-headers
 
 
+# ------------------------ Policies ------------------------
+
 policies:
-  # cors:
-    #cors-public:
-      #allow_origins: ["*"]
-      #allow_methods: ["GET", "POST"]
-      #allow_headers: ["Authorization", "Content-Type"]
-
-    #cors-private:
-      #allow_methods: [ "GET", "POST" ]
-      #allow_headers: ["Authorization", "Content-Type", "X-Request-Id"]
-
-  # authn:
-    # jwt-private:
-      # enabled: true
-
 
   headers:
+
     security-headers:
       request:
         add:

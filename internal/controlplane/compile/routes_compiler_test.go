@@ -12,7 +12,7 @@ import (
 
 func TestRoutes(t *testing.T) {
 	t.Run("empty routes", func(t *testing.T) {
-		out, err := Routes(nil, nil)
+		out, err := Routes(nil, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -24,20 +24,20 @@ func TestRoutes(t *testing.T) {
 	t.Run("single route", func(t *testing.T) {
 		routes := []ir.Route{
 			{
-				Name: "api",
+				Name:    "api",
+				Service: "api-service",
 				Match: ir.Match{
 					PathPrefix: "/v1/",
 					Methods:    []string{"GET", "POST"},
 				},
-				Upstream: ir.Upstream{
-					Scheme: "https",
-					Host:   "api.example.com",
-					Port:   443,
-				},
 			},
 		}
 
-		out, err := Routes(routes, nil)
+		serviceIDs := map[string]snapshot.ServiceID{
+			"api-service": 0,
+		}
+
+		out, err := Routes(serviceIDs, routes, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -49,12 +49,12 @@ func TestRoutes(t *testing.T) {
 
 		want := []snapshot.CompiledRoute{
 			{
-				Name: "api",
+				Name:    "api",
+				Service: snapshot.ServiceID(0),
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/v1/",
 					Methods:    methodMask,
 				},
-				Upstream: "https://api.example.com:443",
 			},
 		}
 
@@ -63,27 +63,56 @@ func TestRoutes(t *testing.T) {
 		}
 	})
 
-	t.Run("empty methods list is MethodAll", func(t *testing.T) {
+	t.Run("unknown service", func(t *testing.T) {
 		routes := []ir.Route{
 			{
-				Name: "any",
+				Name:    "api",
+				Service: "missing",
 				Match: ir.Match{
 					PathPrefix: "/",
-					Methods:    nil,
-				},
-				Upstream: ir.Upstream{
-					Scheme: "http",
-					Host:   "127.0.0.1",
-					Port:   80,
 				},
 			},
 		}
 
-		policies := ir.NormalizedPolicies{
-			Headers: make(map[string]ir.NormalizedHeaders),
+		serviceIDs := map[string]snapshot.ServiceID{
+			"api-service": 0,
 		}
 
-		out, err := Routes(routes, &policies)
+		_, err := Routes(serviceIDs, routes, nil)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+
+		if !strings.Contains(err.Error(), `route "api"`) {
+			t.Fatalf("error should mention route name: %v", err)
+		}
+
+		if !strings.Contains(err.Error(), `unknown service "missing"`) {
+			t.Fatalf("error should mention unknown service: %v", err)
+		}
+	})
+
+	t.Run("empty methods list is MethodAll", func(t *testing.T) {
+		routes := []ir.Route{
+			{
+				Name:    "any",
+				Service: "api-service",
+				Match: ir.Match{
+					PathPrefix: "/",
+					Methods:    nil,
+				},
+			},
+		}
+
+		serviceIDs := map[string]snapshot.ServiceID{
+			"api-service": 0,
+		}
+
+		policies := ir.Policies{
+			Headers: make(map[string]ir.Headers),
+		}
+
+		out, err := Routes(serviceIDs, routes, &policies)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -96,33 +125,36 @@ func TestRoutes(t *testing.T) {
 	t.Run("invalid HTTP method", func(t *testing.T) {
 		routes := []ir.Route{
 			{
-				Name: "bad",
+				Name:    "bad",
+				Service: "api-service",
 				Match: ir.Match{
 					PathPrefix: "/",
 					Methods:    []string{"BOGUS"},
 				},
-				Upstream: ir.Upstream{
-					Scheme: "http",
-					Host:   "h",
-					Port:   1,
-				},
 			},
 		}
 
-		policies := ir.NormalizedPolicies{
-			Headers: make(map[string]ir.NormalizedHeaders),
+		serviceIDs := map[string]snapshot.ServiceID{
+			"api-service": 0,
 		}
 
-		_, err := Routes(routes, &policies)
+		policies := ir.Policies{
+			Headers: make(map[string]ir.Headers),
+		}
+
+		_, err := Routes(serviceIDs, routes, &policies)
 		if err == nil {
 			t.Fatal("expected error")
 		}
+
 		if !strings.Contains(err.Error(), `route "bad"`) {
 			t.Fatalf("error should mention route name: %v", err)
 		}
+
 		if !strings.Contains(err.Error(), "compile method mask") {
 			t.Fatalf("error should mention method mask: %v", err)
 		}
+
 		if !strings.Contains(err.Error(), "unsupported HTTP method") {
 			t.Fatalf("error should wrap methodmask error: %v", err)
 		}
@@ -131,93 +163,45 @@ func TestRoutes(t *testing.T) {
 	t.Run("route order preserved", func(t *testing.T) {
 		routes := []ir.Route{
 			{
-				Name: "first",
+				Name:    "first",
+				Service: "first-service",
 				Match: ir.Match{
 					PathPrefix: "/a",
 				},
-				Upstream: ir.Upstream{
-					Scheme: "http",
-					Host:   "a",
-					Port:   1,
-				},
 			},
 			{
-				Name: "second",
+				Name:    "second",
+				Service: "second-service",
 				Match: ir.Match{
 					PathPrefix: "/b",
 				},
-				Upstream: ir.Upstream{
-					Scheme: "http",
-					Host:   "b",
-					Port:   2,
-				},
 			},
 		}
 
-		policies := ir.NormalizedPolicies{
-			Headers: make(map[string]ir.NormalizedHeaders),
+		serviceIDs := map[string]snapshot.ServiceID{
+			"first-service":  0,
+			"second-service": 1,
 		}
 
-		out, err := Routes(routes, &policies)
+		policies := ir.Policies{
+			Headers: make(map[string]ir.Headers),
+		}
+
+		out, err := Routes(serviceIDs, routes, &policies)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if len(out) != 2 || out[0].Name != "first" || out[1].Name != "second" {
+		if len(out) != 2 {
 			t.Fatalf("routes: %#v", out)
 		}
+
+		if out[0].Name != "first" || out[0].Service != 0 {
+			t.Fatalf("first route: %#v", out[0])
+		}
+
+		if out[1].Name != "second" || out[1].Service != 1 {
+			t.Fatalf("second route: %#v", out[1])
+		}
 	})
-}
-
-func TestUpstreamOriginURL(t *testing.T) {
-	tests := []struct {
-		name     string
-		upstream ir.Upstream
-		want     string
-	}{
-		{
-			name: "https hostname",
-			upstream: ir.Upstream{
-				Scheme: "https",
-				Host:   "example.com",
-				Port:   443,
-			},
-			want: "https://example.com:443",
-		},
-		{
-			name: "http ipv4",
-			upstream: ir.Upstream{
-				Scheme: "http",
-				Host:   "10.0.0.1",
-				Port:   8080,
-			},
-			want: "http://10.0.0.1:8080",
-		},
-		{
-			name: "ipv6 literal host",
-			upstream: ir.Upstream{
-				Scheme: "http",
-				Host:   "2001:db8::1",
-				Port:   80,
-			},
-			want: "http://[2001:db8::1]:80",
-		},
-		{
-			name: "port zero",
-			upstream: ir.Upstream{
-				Scheme: "http",
-				Host:   "x",
-				Port:   0,
-			},
-			want: "http://x:0",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := upstreamOriginURL(tt.upstream); got != tt.want {
-				t.Errorf("upstreamOriginURL() = %q, want %q", got, tt.want)
-			}
-		})
-	}
 }

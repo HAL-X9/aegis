@@ -81,7 +81,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if candidate.Route.Match.Methods&methodBit != 0 {
 			methodMatch = true
 			if router.HeadersMatch(candidate.Route.Match.Headers, r.Header) {
-				target = candidate.Route.Upstream + r.URL.EscapedPath()
+				target = candidate.Upstream + r.URL.EscapedPath()
 				if r.URL.RawQuery != "" {
 					target += "?" + r.URL.RawQuery
 				}

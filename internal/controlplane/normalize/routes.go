@@ -24,16 +24,12 @@ func Routes(routes []schema.Route) []ir.Route {
 
 	for _, route := range routes {
 		normalized = append(normalized, ir.Route{
-			Name: route.Name,
+			Name:    strings.TrimSpace(route.Name),
+			Service: strings.TrimSpace(route.Service),
 			Match: ir.Match{
 				PathPrefix: normalizePathPrefix(route.Match.PathPrefix),
 				Methods:    normalizeMethods(route.Match.Methods),
 				Headers:    normalizeHeaders(route.Match.Headers),
-			},
-			Upstream: ir.Upstream{
-				Scheme: strings.ToLower(route.Upstream.Scheme),
-				Host:   strings.ToLower(route.Upstream.Host),
-				Port:   route.Upstream.Port,
 			},
 			Policies: normalizePolicyRefs(route.Policies),
 		})

@@ -18,9 +18,23 @@ func BuildEngine(cfg *snapshot.CompiledConfig) (*Engine, error) {
 	}
 
 	entries := make([]*RouteIndexEntry, 0, len(cfg.Routes))
+
 	for i := range cfg.Routes {
+		route := &cfg.Routes[i]
+
+		if int(route.Service) >= len(cfg.Services.Items) {
+			return nil, fmt.Errorf(
+				"route %q references invalid service ID %d",
+				route.Name,
+				route.Service,
+			)
+		}
+
+		service := &cfg.Services.Items[route.Service]
+
 		entries = append(entries, &RouteIndexEntry{
-			Route: &cfg.Routes[i],
+			Route:    route,
+			Upstream: service.Upstream,
 		})
 	}
 

@@ -16,13 +16,13 @@ import (
 //   - canonicalization of all identifiers and header names
 //
 // The resulting structure is safe for compilation and runtime execution. The function does not mutate input state.
-func Policies(cfg *schema.Policies) (*ir.NormalizedPolicies, error) {
+func Policies(cfg *schema.Policies) (*ir.Policies, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("normalize policies: config is nil")
 	}
 
-	out := &ir.NormalizedPolicies{
-		Headers: make(map[string]ir.NormalizedHeaders, len(cfg.Headers)),
+	out := &ir.Policies{
+		Headers: make(map[string]ir.Headers, len(cfg.Headers)),
 	}
 
 	for name, header := range cfg.Headers {
@@ -44,7 +44,7 @@ func Policies(cfg *schema.Policies) (*ir.NormalizedPolicies, error) {
 			)
 		}
 
-		out.Headers[name] = ir.NormalizedHeaders{
+		out.Headers[name] = ir.Headers{
 			Request:  *req,
 			Response: *resp,
 		}
@@ -57,12 +57,12 @@ func Policies(cfg *schema.Policies) (*ir.NormalizedPolicies, error) {
 //
 // The function enforces header name canonicalization using MIME rules and guarantees deterministic output.
 // It returns an error if the input source is nil.
-func normalizeHeadersOps(headersOps *schema.HeadersOps) (*ir.NormalizedHeadersOps, error) {
+func normalizeHeadersOps(headersOps *schema.HeadersOps) (*ir.HeadersOps, error) {
 	if headersOps == nil {
 		return nil, fmt.Errorf("headers operations must not be nil")
 	}
 
-	out := &ir.NormalizedHeadersOps{
+	out := &ir.HeadersOps{
 		Add:    make(map[string]string, len(headersOps.Add)),
 		Set:    make(map[string]string, len(headersOps.Set)),
 		Remove: make([]string, 0, len(headersOps.Remove)),

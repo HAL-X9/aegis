@@ -12,15 +12,19 @@ func TestLoad(t *testing.T) {
 		path := filepath.Join(dir, "config.yaml")
 
 		content := `
-routes:
-  - name: test
-    match:
-      path_prefix: /test
-      methods: ["GET"]
+services:
+  user-profile:
     upstream:
       scheme: http
-      host: localhost
-      port: 8080
+      host: mock-upstream
+      port: 8082
+
+routes:
+  - name: user-profile
+    service: user-profile
+    match:
+      path_prefix: /api/v1/profile
+      methods: [GET]
 `
 
 		err := os.WriteFile(path, []byte(content), 0644)
@@ -37,8 +41,20 @@ routes:
 			t.Fatalf("expected config, got nil")
 		}
 
+		if len(cfg.Services) != 1 {
+			t.Fatalf("expected 1 service, got %d", len(cfg.Services))
+		}
+
 		if len(cfg.Routes) != 1 {
 			t.Fatalf("expected 1 route, got %d", len(cfg.Routes))
+		}
+
+		if cfg.Routes[0].Service != "user-profile" {
+			t.Fatalf(
+				"expected route service %q, got %q",
+				"user-profile",
+				cfg.Routes[0].Service,
+			)
 		}
 	})
 
@@ -46,7 +62,7 @@ routes:
 		_, err := Load("/non/existent/path.yaml")
 
 		if err == nil {
-			t.Fatalf("expected error for missing file")
+			t.Fatal("expected error for missing file")
 		}
 	})
 
@@ -55,15 +71,27 @@ routes:
 		path := filepath.Join(dir, "bad.yaml")
 
 		content := `
+services:
+  user-profile:
+    upstream:
+      scheme: http
+      host: localhost
+      port: 8080
+
 routes:
   - name: ""
+    service: user-profile
+    match:
+      path_prefix: /test
 `
 
-		_ = os.WriteFile(path, []byte(content), 0644)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write temp config: %v", err)
+		}
 
 		_, err := Load(path)
 		if err == nil {
-			t.Fatalf("expected validation error")
+			t.Fatal("expected validation error")
 		}
 	})
 }

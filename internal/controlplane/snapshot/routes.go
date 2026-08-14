@@ -3,22 +3,15 @@ package snapshot
 import "github.com/aegis/internal/contracts/methodmask"
 
 // CompiledRoute is the immutable runtime representation of a routing rule.
-//
-// It is produced by the control-plane compilation step and is consumed
-// directly by the dataplane hot path.
-//
-// Design goals:
-//   - zero dynamic parsing at runtime
-//   - deterministic matching
-//   - minimal allocations in request path
 type CompiledRoute struct {
+	// Name is the stable route identifier used for diagnostics and observability.
 	Name string
+
+	// Service is the compiled service reference selected when the route matches.
+	Service ServiceID
 
 	// Match contains all predicates required to determine route applicability.
 	Match CompiledMatch
-
-	// Upstream is a resolved backend target identifier.
-	Upstream string
 
 	// Headers contains pre-compiled tokenized header mutation plans for the request and response paths.
 	Headers CompiledHeaders

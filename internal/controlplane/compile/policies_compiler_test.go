@@ -12,7 +12,7 @@ import (
 // ──────────────────────────── Policy ──────────────────────────────────────
 
 func TestPolicy_nilReturnsError(t *testing.T) {
-	_, err := Policy(nil)
+	_, err := Policies(nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -22,8 +22,8 @@ func TestPolicy_nilReturnsError(t *testing.T) {
 }
 
 func TestPolicy_emptyHeaders(t *testing.T) {
-	out, err := Policy(&ir.NormalizedPolicies{
-		Headers: map[string]ir.NormalizedHeaders{},
+	out, err := Policies(&ir.Policies{
+		Headers: map[string]ir.Headers{},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -34,10 +34,10 @@ func TestPolicy_emptyHeaders(t *testing.T) {
 }
 
 func TestPolicy_singlePolicyRequestSet(t *testing.T) {
-	out, err := Policy(&ir.NormalizedPolicies{
-		Headers: map[string]ir.NormalizedHeaders{
+	out, err := Policies(&ir.Policies{
+		Headers: map[string]ir.Headers{
 			"ct": {
-				Request: ir.NormalizedHeadersOps{
+				Request: ir.HeadersOps{
 					Set: map[string]string{"Content-Type": "application/json"},
 				},
 			},
@@ -67,10 +67,10 @@ func TestPolicy_singlePolicyRequestSet(t *testing.T) {
 }
 
 func TestPolicy_singlePolicyResponseAdd(t *testing.T) {
-	out, err := Policy(&ir.NormalizedPolicies{
-		Headers: map[string]ir.NormalizedHeaders{
+	out, err := Policies(&ir.Policies{
+		Headers: map[string]ir.Headers{
 			"sec": {
-				Response: ir.NormalizedHeadersOps{
+				Response: ir.HeadersOps{
 					Add: map[string]string{"X-Content-Type-Options": "nosniff"},
 				},
 			},
@@ -97,10 +97,10 @@ func TestPolicy_singlePolicyResponseAdd(t *testing.T) {
 }
 
 func TestPolicy_removeOpNoValue(t *testing.T) {
-	out, err := Policy(&ir.NormalizedPolicies{
-		Headers: map[string]ir.NormalizedHeaders{
+	out, err := Policies(&ir.Policies{
+		Headers: map[string]ir.Headers{
 			"strip": {
-				Response: ir.NormalizedHeadersOps{
+				Response: ir.HeadersOps{
 					Remove: []string{"Server"},
 				},
 			},
@@ -128,13 +128,13 @@ func TestPolicy_removeOpNoValue(t *testing.T) {
 
 // Policies must be emitted in sorted (deterministic) name order.
 func TestPolicy_multiplePoliciesDeterministicOrder(t *testing.T) {
-	out, err := Policy(&ir.NormalizedPolicies{
-		Headers: map[string]ir.NormalizedHeaders{
+	out, err := Policies(&ir.Policies{
+		Headers: map[string]ir.Headers{
 			"z-policy": {
-				Response: ir.NormalizedHeadersOps{Remove: []string{"Server"}},
+				Response: ir.HeadersOps{Remove: []string{"Server"}},
 			},
 			"a-policy": {
-				Request: ir.NormalizedHeadersOps{
+				Request: ir.HeadersOps{
 					Set: map[string]string{"Host": "example.com"},
 				},
 			},
@@ -157,10 +157,10 @@ func TestPolicy_multiplePoliciesDeterministicOrder(t *testing.T) {
 }
 
 func TestPolicy_unknownHeaderReturnsWrappedError(t *testing.T) {
-	_, err := Policy(&ir.NormalizedPolicies{
-		Headers: map[string]ir.NormalizedHeaders{
+	_, err := Policies(&ir.Policies{
+		Headers: map[string]ir.Headers{
 			"bad-policy": {
-				Request: ir.NormalizedHeadersOps{
+				Request: ir.HeadersOps{
 					Set: map[string]string{"X-Not-Supported": "val"},
 				},
 			},
@@ -277,7 +277,7 @@ func TestCompileHeaderOps_nilReturnsNil(t *testing.T) {
 }
 
 func TestCompileHeaderOps_emptyReturnsNil(t *testing.T) {
-	ops, err := compileHeaderOps(&ir.NormalizedHeadersOps{}, newHeaderValueBuilder(0))
+	ops, err := compileHeaderOps(&ir.HeadersOps{}, newHeaderValueBuilder(0))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestCompileHeaderOps_emptyReturnsNil(t *testing.T) {
 }
 
 func TestCompileHeaderOps_removeOnly(t *testing.T) {
-	ops, err := compileHeaderOps(&ir.NormalizedHeadersOps{
+	ops, err := compileHeaderOps(&ir.HeadersOps{
 		Remove: []string{"Server"},
 	}, newHeaderValueBuilder(0))
 	if err != nil {
@@ -306,7 +306,7 @@ func TestCompileHeaderOps_removeOnly(t *testing.T) {
 
 func TestCompileHeaderOps_setPacksValue(t *testing.T) {
 	b := newHeaderValueBuilder(32)
-	ops, err := compileHeaderOps(&ir.NormalizedHeadersOps{
+	ops, err := compileHeaderOps(&ir.HeadersOps{
 		Set: map[string]string{"Content-Type": "text/plain"},
 	}, b)
 	if err != nil {
@@ -329,7 +329,7 @@ func TestCompileHeaderOps_setPacksValue(t *testing.T) {
 
 func TestCompileHeaderOps_addPacksValue(t *testing.T) {
 	b := newHeaderValueBuilder(32)
-	ops, err := compileHeaderOps(&ir.NormalizedHeadersOps{
+	ops, err := compileHeaderOps(&ir.HeadersOps{
 		Add: map[string]string{"X-Frame-Options": "DENY"},
 	}, b)
 	if err != nil {
@@ -352,7 +352,7 @@ func TestCompileHeaderOps_addPacksValue(t *testing.T) {
 
 // Operations must be emitted in Remove → Set → AddIfAbsent order.
 func TestCompileHeaderOps_executionOrder(t *testing.T) {
-	ops, err := compileHeaderOps(&ir.NormalizedHeadersOps{
+	ops, err := compileHeaderOps(&ir.HeadersOps{
 		Remove: []string{"Server"},
 		Set:    map[string]string{"Content-Type": "application/json"},
 		Add:    map[string]string{"X-Frame-Options": "DENY"},
@@ -375,7 +375,7 @@ func TestCompileHeaderOps_executionOrder(t *testing.T) {
 }
 
 func TestCompileHeaderOps_unknownHeaderInRemove(t *testing.T) {
-	_, err := compileHeaderOps(&ir.NormalizedHeadersOps{
+	_, err := compileHeaderOps(&ir.HeadersOps{
 		Remove: []string{"X-Not-Supported"},
 	}, newHeaderValueBuilder(0))
 	if err == nil {
@@ -387,7 +387,7 @@ func TestCompileHeaderOps_unknownHeaderInRemove(t *testing.T) {
 }
 
 func TestCompileHeaderOps_unknownHeaderInSet(t *testing.T) {
-	_, err := compileHeaderOps(&ir.NormalizedHeadersOps{
+	_, err := compileHeaderOps(&ir.HeadersOps{
 		Set: map[string]string{"X-Not-Supported": "value"},
 	}, newHeaderValueBuilder(0))
 	if err == nil {
@@ -396,7 +396,7 @@ func TestCompileHeaderOps_unknownHeaderInSet(t *testing.T) {
 }
 
 func TestCompileHeaderOps_unknownHeaderInAdd(t *testing.T) {
-	_, err := compileHeaderOps(&ir.NormalizedHeadersOps{
+	_, err := compileHeaderOps(&ir.HeadersOps{
 		Add: map[string]string{"X-Not-Supported": "value"},
 	}, newHeaderValueBuilder(0))
 	if err == nil {
@@ -448,21 +448,21 @@ func TestEstimateStringsSize_nil(t *testing.T) {
 }
 
 func TestEstimateStringsSize_empty(t *testing.T) {
-	if got := estimateStringsSize(&ir.NormalizedPolicies{Headers: map[string]ir.NormalizedHeaders{}}); got != 0 {
+	if got := estimateStringsSize(&ir.Policies{Headers: map[string]ir.Headers{}}); got != 0 {
 		t.Errorf("got %d, want 0", got)
 	}
 }
 
 func TestEstimateStringsSize_countsSetAndAddValuesOnly(t *testing.T) {
-	policies := &ir.NormalizedPolicies{
-		Headers: map[string]ir.NormalizedHeaders{
+	policies := &ir.Policies{
+		Headers: map[string]ir.Headers{
 			"p": {
-				Request: ir.NormalizedHeadersOps{
+				Request: ir.HeadersOps{
 					Set:    map[string]string{"Host": "abc"},          // 3
 					Add:    map[string]string{"Content-Type": "json"}, // 4
 					Remove: []string{"Server"},                        // not counted
 				},
-				Response: ir.NormalizedHeadersOps{
+				Response: ir.HeadersOps{
 					Set: map[string]string{"X-Frame-Options": "DE"}, // 2
 					Add: map[string]string{"X-XSS-Protection": "1"}, // 1
 				},

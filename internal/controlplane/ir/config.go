@@ -1,6 +1,6 @@
 package ir
 
-// NormalizedConfig represents a fully validated and canonicalized control
+// Config represents a fully validated and canonicalized control
 // plane configuration.
 //
 // The structure is produced after schema validation and normalization phases
@@ -9,12 +9,16 @@ package ir
 //
 // All contained entities are guaranteed to be semantically valid,
 // deterministic, and normalized into runtime-independent form.
-type NormalizedConfig struct {
-	// NormalizedRoutes contains canonical route definitions prepared for
-	// compilation into runtime routing structures.
-	NormalizedRoutes []Route
+type Config struct {
+	// Services contains canonical service definitions prepared for
+	// compilation into runtime service structures.
+	Services Services
 
-	// NormalizedPolicies contains canonical reusable policy definitions
+	// Routes contains canonical route definitions prepared for
+	// compilation into runtime routing structures.
+	Routes []Route
+
+	// Policies contains canonical reusable policy definitions
 	// prepared for compilation into executable policy runtime structures.
-	NormalizedPolicies NormalizedPolicies
+	Policies Policies
 }

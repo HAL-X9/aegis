@@ -4,8 +4,8 @@ package schema
 // identifier for logs, metrics, and diagnostics.
 type Route struct {
 	Name     string   `yaml:"name"`
+	Service  string   `yaml:"service"`
 	Match    Match    `yaml:"match"`
-	Upstream Upstream `yaml:"upstream"`
 	Policies []Policy `yaml:"policies"`
 }
 
@@ -17,13 +17,7 @@ type Match struct {
 	Headers    map[string][]string `yaml:"headers"`
 }
 
-// Upstream names a TCP endpoint (scheme, host and port) for proxied traffic.
-type Upstream struct {
-	Scheme string `yaml:"scheme"`
-	Host   string `yaml:"host"`
-	Port   int    `yaml:"port"`
-}
-
+// Policy references a reusable policy by name.
 type Policy struct {
 	Name string `yaml:"name"`
 }

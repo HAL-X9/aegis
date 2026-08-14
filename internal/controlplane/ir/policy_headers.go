@@ -1,13 +1,13 @@
 package ir
 
-// NormalizedHeaders represents a canonicalized form of header mutation operations.
+// Headers represents a canonicalized form of header mutation operations.
 // Header names are normalized to standard MIME canonical form to ensure consistent matching at runtime.
-type NormalizedHeaders struct {
-	Request  NormalizedHeadersOps
-	Response NormalizedHeadersOps
+type Headers struct {
+	Request  HeadersOps
+	Response HeadersOps
 }
 
-// NormalizedHeadersOps defines a set of deterministic header mutation operations.
+// HeadersOps defines a set of deterministic header mutation operations.
 //
 // Operations are applied in the following semantic order at runtime:
 //  1. Remove
@@ -15,7 +15,7 @@ type NormalizedHeaders struct {
 //  3. Add (append or insert values depending on execution model)
 //
 // All header keys are stored in canonical MIME format to ensure case-insensitive consistency.
-type NormalizedHeadersOps struct {
+type HeadersOps struct {
 	Add    map[string]string
 	Set    map[string]string
 	Remove []string

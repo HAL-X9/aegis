@@ -2,10 +2,7 @@ package compile
 
 import (
 	"fmt"
-	"net"
-	"net/url"
 	"sort"
-	"strconv"
 
 	"github.com/aegis/internal/contracts/methodmask"
 	"github.com/aegis/internal/controlplane/ir"
@@ -21,13 +18,18 @@ import (
 //   - fully precomputed (no parsing in runtime path)
 //   - deterministic routing rules
 //   - optimized for fast lookup and evaluation
-func Routes(routes []ir.Route, policies *ir.NormalizedPolicies) ([]snapshot.CompiledRoute, error) {
+func Routes(serviceIDs map[string]snapshot.ServiceID, routes []ir.Route, policies *ir.Policies) ([]snapshot.CompiledRoute, error) {
 	compiledRoutes := make([]snapshot.CompiledRoute, 0, len(routes))
 
 	for _, route := range routes {
 		// Path prefix is taken as-is, assuming it has already been normalized
 		// in the validation/normalization representation of the control plane.
 		pathPrefix := route.Match.PathPrefix
+
+		serviceID, ok := serviceIDs[route.Service]
+		if !ok {
+			return nil, fmt.Errorf("route %q references unknown service %q", route.Name, route.Service)
+		}
 
 		// Convert human-readable HTTP methods into a bitmask representation
 		// for efficient O(1) matching in dataplane hot path.
@@ -51,37 +53,20 @@ func Routes(routes []ir.Route, policies *ir.NormalizedPolicies) ([]snapshot.Comp
 			return nil, fmt.Errorf("route %q: compile policy headers: %w", route.Name, err)
 		}
 
-		// Upstream is converted into a fully qualified origin URL.
-		// This removes the need for runtime URL construction in dataplane.
-		upstream := upstreamOriginURL(route.Upstream)
-
 		compiledRoutes = append(compiledRoutes, snapshot.CompiledRoute{
-			Name: route.Name,
-
+			Name:    route.Name,
+			Service: serviceID,
 			Match: snapshot.CompiledMatch{
 				PathPrefix: pathPrefix,
 				Methods:    methodMask,
 				Headers:    headerPredicates,
 			},
 
-			Upstream: upstream,
-			Headers:  headers,
+			Headers: headers,
 		})
 	}
 
 	return compiledRoutes, nil
-}
-
-func upstreamOriginURL(upstream ir.Upstream) string {
-	u := &url.URL{
-		Scheme: upstream.Scheme,
-		Host: net.JoinHostPort(
-			upstream.Host,
-			strconv.Itoa(upstream.Port),
-		),
-	}
-
-	return u.String()
 }
 
 func headersPredicate(headers map[string][]string) ([]snapshot.HeaderPredicate, error) {
@@ -137,7 +122,7 @@ func headersPredicate(headers map[string][]string) ([]snapshot.HeaderPredicate, 
 
 func compileRoutePolicyHeaders(
 	refs []ir.PolicyRef,
-	policies *ir.NormalizedPolicies,
+	policies *ir.Policies,
 ) (snapshot.CompiledHeaders, error) {
 	if len(refs) == 0 {
 		return snapshot.CompiledHeaders{}, nil
@@ -146,12 +131,12 @@ func compileRoutePolicyHeaders(
 		return snapshot.CompiledHeaders{}, fmt.Errorf("policy references require normalized policies")
 	}
 
-	merged := ir.NormalizedHeaders{
-		Request: ir.NormalizedHeadersOps{
+	merged := ir.Headers{
+		Request: ir.HeadersOps{
 			Add: make(map[string]string),
 			Set: make(map[string]string),
 		},
-		Response: ir.NormalizedHeadersOps{
+		Response: ir.HeadersOps{
 			Add: make(map[string]string),
 			Set: make(map[string]string),
 		},
@@ -175,7 +160,7 @@ func compileRoutePolicyHeaders(
 	return compileRouteHeaders(&merged, builder)
 }
 
-func mergeHeadersOps(dst *ir.NormalizedHeadersOps, src *ir.NormalizedHeadersOps) error {
+func mergeHeadersOps(dst *ir.HeadersOps, src *ir.HeadersOps) error {
 	if dst == nil || src == nil {
 		return nil
 	}
@@ -210,7 +195,7 @@ func mergeHeadersOps(dst *ir.NormalizedHeadersOps, src *ir.NormalizedHeadersOps)
 	return nil
 }
 
-func headersOpContains(ops ir.NormalizedHeadersOps, name string) bool {
+func headersOpContains(ops ir.HeadersOps, name string) bool {
 	if _, ok := ops.Add[name]; ok {
 		return true
 	}
@@ -225,7 +210,7 @@ func headersOpContains(ops ir.NormalizedHeadersOps, name string) bool {
 	return false
 }
 
-func estimateHeadersSize(headers *ir.NormalizedHeaders) int {
+func estimateHeadersSize(headers *ir.Headers) int {
 	if headers == nil {
 		return 0
 	}

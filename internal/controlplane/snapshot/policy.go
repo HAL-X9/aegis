@@ -33,7 +33,6 @@ const (
 	HeaderXFrameOptions
 	HeaderXXSSProtection
 
-	// hop-by-hop headers
 	HeaderConnection
 	HeaderKeepAlive
 	HeaderProxyAuthenticate

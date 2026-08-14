@@ -69,23 +69,5 @@ func validateRoute(route *schema.Route) error {
 		}
 	}
 
-	if strings.TrimSpace(route.Upstream.Scheme) == "" {
-		return fmt.Errorf("upstream.scheme is required and must be non-empty")
-	}
-
-	switch route.Upstream.Scheme {
-	case "http", "https":
-	default:
-		return fmt.Errorf("upstream.scheme must be one of: http, https")
-	}
-
-	if strings.TrimSpace(route.Upstream.Host) == "" {
-		return fmt.Errorf("route validation failed: upstream.host is required and must not be blank")
-	}
-
-	if route.Upstream.Port <= 0 || route.Upstream.Port > 65535 {
-		return fmt.Errorf("route validation failed: upstream.port must be in range 1..65535")
-	}
-
 	return nil
 }

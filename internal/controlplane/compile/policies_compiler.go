@@ -8,9 +8,9 @@ import (
 	"github.com/aegis/internal/controlplane/snapshot"
 )
 
-// Policy compiles the normalized IR policies into a highly optimized,
+// Policies compiles the normalized IR policies into a highly optimized,
 // allocation-free snapshot ready for the data plane hot-path.
-func Policy(policies *ir.NormalizedPolicies) (*snapshot.CompiledPolicies, error) {
+func Policies(policies *ir.Policies) (*snapshot.CompiledPolicies, error) {
 	if policies == nil {
 		return nil, fmt.Errorf("compile policies configuration: config is nil")
 	}
@@ -27,8 +27,7 @@ func Policy(policies *ir.NormalizedPolicies) (*snapshot.CompiledPolicies, error)
 	compiledHeaders := make([]snapshot.CompiledHeaders, 0, len(policyNames))
 
 	for _, name := range policyNames {
-		h := policies.Headers[name]
-		compiled, err := compileRouteHeaders(&h, builder)
+		compiled, err := compileRouteHeaders(new(policies.Headers[name]), builder)
 		if err != nil {
 			return nil, fmt.Errorf("compile headers policy %q: %w", name, err)
 		}
@@ -94,7 +93,7 @@ func (b *headerValueBuilder) Append(value string) (offset uint32, length uint16)
 // compileRouteHeaders compiles request and response header mutation rules
 // into a unified snapshot format.
 func compileRouteHeaders(
-	headers *ir.NormalizedHeaders,
+	headers *ir.Headers,
 	builder *headerValueBuilder,
 ) (snapshot.CompiledHeaders, error) {
 
@@ -126,7 +125,7 @@ func compileRouteHeaders(
 
 // compileHeaderOps transforms normalized operations into compact instructions.
 func compileHeaderOps(
-	ops *ir.NormalizedHeadersOps,
+	ops *ir.HeadersOps,
 	builder *headerValueBuilder,
 ) ([]snapshot.HeaderInstruction, error) {
 
@@ -204,7 +203,7 @@ func sortedStringMapKeys(values map[string]string) []string {
 }
 
 // estimateStringsSize calculates total bytes for header values.
-func estimateStringsSize(policies *ir.NormalizedPolicies) int {
+func estimateStringsSize(policies *ir.Policies) int {
 	if policies == nil {
 		return 0
 	}

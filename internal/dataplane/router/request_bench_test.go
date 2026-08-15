@@ -22,8 +22,8 @@ package router
 // Run:
 //
 //	go test ./internal/dataplane/router/ -run '^$' -bench 'Request|Lookup|Headers|Method' -benchmem
-//	go test ./internal/dataplane/router/ -run '^$' -bench Request -benchmem -benchtime 3s -count 10 > new.txt
-//	benchstat old.txt new.txt
+//	go test ./internal/dataplane/router/ -run '^$' -bench Request -benchmem -benchtime 3s -count 10 > befotre.txt
+//	benchstat old.txt befotre.txt
 //
 // Pin the measurement environment for comparable numbers:
 //
@@ -140,6 +140,104 @@ func buildBenchEngine(tb testing.TB, size int, mm methodMode, hm headerMode) (*E
 	return engine, path
 }
 
+func buildDeepBenchEngine(tb testing.TB, size int) (*Engine, []byte) {
+	tb.Helper()
+
+	// We deliberately construct a deep and moderately branching routing tree.
+	//
+	// The current router compares static children linearly, so this benchmark
+	// exposes the cost of child fan-out independently from the shallow
+	// high-fanout benchmark above.
+	const (
+		depth   = 8
+		fanout  = 4
+		maxLeaf = 4096
+	)
+
+	if size > maxLeaf {
+		size = maxLeaf
+	}
+
+	routes := make([]snapshot.CompiledRoute, 0, size)
+	services := make([]snapshot.CompiledService, 0, size)
+
+	// Generate paths such as:
+	//
+	// /api/v1/tenant-03/region-02/service-01/resource-03/version-00/endpoint-01
+	//
+	// The exact names are not important. What matters is that routes share
+	// several prefix levels and branch gradually instead of creating one
+	// enormous fan-out at a single node.
+	for i := 0; i < size; i++ {
+		n := i
+
+		segments := make([]string, depth)
+
+		for level := 0; level < depth; level++ {
+			value := n % fanout
+			n /= fanout
+
+			segments[level] = "s" + strconv.Itoa(value)
+		}
+
+		path := "/api/v1"
+		for _, segment := range segments {
+			path += "/" + segment
+		}
+
+		id := strconv.Itoa(i)
+
+		services = append(services, snapshot.CompiledService{
+			Name:     "deep-svc-" + id,
+			Upstream: "http://deep-upstream-" + id + ".internal:8080",
+		})
+
+		routes = append(routes, snapshot.CompiledRoute{
+			Name:    "deep-route-" + id,
+			Service: snapshot.ServiceID(i),
+			Match: snapshot.CompiledMatch{
+				PathPrefix: path,
+				Methods:    methodmask.MethodAll,
+			},
+		})
+	}
+
+	engine, err := BuildEngine(&snapshot.CompiledConfig{
+		Services: snapshot.CompiledServices{
+			Items: services,
+		},
+		Routes: routes,
+	})
+	if err != nil {
+		tb.Fatalf("BuildEngine: %v", err)
+	}
+
+	// Use the last generated route as the lookup target.
+	n := size - 1
+
+	segments := make([]string, depth)
+
+	for level := 0; level < depth; level++ {
+		value := n % fanout
+		n /= fanout
+
+		segments[level] = "s" + strconv.Itoa(value)
+	}
+
+	pathString := "/api/v1"
+	for _, segment := range segments {
+		pathString += "/" + segment
+	}
+
+	path := []byte(pathString)
+
+	if got := engine.Lookup(path); len(got) == 0 {
+		tb.Fatalf("fixture path %q did not resolve to a route", path)
+	}
+
+	return engine, path
+}
+
 // requestMethodBit resolves an incoming request method to its mask bit. This is
 // the realistic per-request cost paid on the method-admission path; it is kept
 // inside the measured loop deliberately.
@@ -148,9 +246,9 @@ func requestMethodBit(method string) methodmask.MethodMask {
 	return bit
 }
 
-// BenchmarkLookup measures the radix path lookup in isolation across table
+// BenchmarkLookupHighFanout measures the radix path lookup in isolation across table
 // sizes. This is the floor cost every request pays regardless of policy.
-func BenchmarkLookup(b *testing.B) {
+func BenchmarkLookupHighFanout(b *testing.B) {
 	for _, size := range []int{16, 64, 256, 512, 1024, 2048, 4096} {
 		engine, path := buildBenchEngine(b, size, methodUnrestricted, headerNone)
 
@@ -171,6 +269,35 @@ func BenchmarkLookup(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				out = engine.Lookup(path)
 			}
+			sinkEntries = out
+		})
+	}
+}
+
+func BenchmarkLookupDeep(b *testing.B) {
+	for _, size := range []int{16, 64, 256, 512, 1024, 2048, 4096} {
+		engine, path := buildDeepBenchEngine(b, size)
+
+		nodes, maxChildren, avgChildren := trieStats(engine.trie.root)
+
+		b.Logf(
+			"routes=%d nodes=%d maxChildren=%d avgChildren=%.2f",
+			size,
+			nodes,
+			maxChildren,
+			avgChildren,
+		)
+
+		b.Run("routes="+strconv.Itoa(size), func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			var out []*RouteIndexEntry
+
+			for i := 0; i < b.N; i++ {
+				out = engine.Lookup(path)
+			}
+
 			sinkEntries = out
 		})
 	}

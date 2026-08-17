@@ -34,8 +34,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/aegis/internal/contracts/methodmask"
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 // sink prevents the compiler from eliminating benchmark work via dead-code

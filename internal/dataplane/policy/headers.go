@@ -3,7 +3,7 @@ package policy
 import (
 	"net/http"
 
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 func resolveHeaderName(id snapshot.HeaderID) string {

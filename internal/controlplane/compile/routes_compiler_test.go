@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aegis/internal/contracts/methodmask"
-	"github.com/aegis/internal/controlplane/ir"
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
+	"github.com/HAL-X9/aegis/internal/controlplane/ir"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 func TestRoutes(t *testing.T) {

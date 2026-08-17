@@ -4,10 +4,10 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/aegis/internal/contracts/methodmask"
-	"github.com/aegis/internal/dataplane/policy"
-	"github.com/aegis/internal/dataplane/request"
-	"github.com/aegis/internal/dataplane/router"
+	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
+	"github.com/HAL-X9/aegis/internal/dataplane/policy"
+	"github.com/HAL-X9/aegis/internal/dataplane/request"
+	"github.com/HAL-X9/aegis/internal/dataplane/router"
 )
 
 // Executor implements an HTTP reverse proxy handler backed by a routing engine.

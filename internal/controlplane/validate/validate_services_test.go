@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aegis/internal/controlplane/schema"
+	"github.com/HAL-X9/aegis/internal/controlplane/schema"
 )
 
 func TestValidateServices(t *testing.T) {

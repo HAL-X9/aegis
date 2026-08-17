@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aegis/internal/controlplane/ir"
-	"github.com/aegis/internal/controlplane/schema"
+	"github.com/HAL-X9/aegis/internal/controlplane/ir"
+	"github.com/HAL-X9/aegis/internal/controlplane/schema"
 )
 
 // Services normalizes service definitions into their canonical

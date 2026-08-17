@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/aegis/internal/config"
-	"github.com/aegis/internal/controlplane/pipeline"
-	"github.com/aegis/internal/controlplane/schema"
-	"github.com/aegis/internal/dataplane/proxy"
-	"github.com/aegis/internal/dataplane/router"
-	edgeadmin "github.com/aegis/internal/edge/admin"
-	edgepublic "github.com/aegis/internal/edge/public"
-	"github.com/aegis/internal/observe/health"
+	"github.com/HAL-X9/aegis/internal/config"
+	"github.com/HAL-X9/aegis/internal/controlplane/pipeline"
+	"github.com/HAL-X9/aegis/internal/controlplane/schema"
+	"github.com/HAL-X9/aegis/internal/dataplane/proxy"
+	"github.com/HAL-X9/aegis/internal/dataplane/router"
+	edgeadmin "github.com/HAL-X9/aegis/internal/edge/admin"
+	edgepublic "github.com/HAL-X9/aegis/internal/edge/public"
+	"github.com/HAL-X9/aegis/internal/observe/health"
 )
 
 type Dependencies struct {

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 func TestHeadersMatch(t *testing.T) {

@@ -3,7 +3,7 @@ package router
 import (
 	"testing"
 
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 func TestRadixTrieInsert(t *testing.T) {

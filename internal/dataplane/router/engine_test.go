@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 func TestBuildEngine(t *testing.T) {

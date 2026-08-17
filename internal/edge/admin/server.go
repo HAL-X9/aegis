@@ -3,7 +3,7 @@ package admin
 import (
 	"net/http"
 
-	"github.com/aegis/internal/config"
+	"github.com/HAL-X9/aegis/internal/config"
 )
 
 func NewSystemServer(cfg *config.Runtime, probe Probe) *http.Server {

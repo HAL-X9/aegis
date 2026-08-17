@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/aegis/internal/controlplane/ir"
-	"github.com/aegis/internal/controlplane/schema"
+	"github.com/HAL-X9/aegis/internal/controlplane/ir"
+	"github.com/HAL-X9/aegis/internal/controlplane/schema"
 )
 
 // Routes converts validated source route definitions into a

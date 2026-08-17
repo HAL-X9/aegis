@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aegis/internal/controlplane/ir"
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/controlplane/ir"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 // ──────────────────────────── Policy ──────────────────────────────────────

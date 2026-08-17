@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/aegis/internal/controlplane/ir"
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/controlplane/ir"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 func Services(services ir.Services) (snapshot.CompiledServices, map[string]snapshot.ServiceID, error) {

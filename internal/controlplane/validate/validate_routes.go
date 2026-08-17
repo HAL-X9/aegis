@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aegis/internal/controlplane/schema"
+	"github.com/HAL-X9/aegis/internal/controlplane/schema"
 )
 
 // allowedHTTPMethods defines the set of supported HTTP methods

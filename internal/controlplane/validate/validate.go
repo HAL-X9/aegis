@@ -3,7 +3,7 @@ package validate
 import (
 	"fmt"
 
-	"github.com/aegis/internal/controlplane/schema"
+	"github.com/HAL-X9/aegis/internal/controlplane/schema"
 )
 
 // Validate performs semantic validation for a gateway runtime configuration.

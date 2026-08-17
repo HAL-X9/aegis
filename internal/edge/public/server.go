@@ -3,7 +3,7 @@ package public
 import (
 	"net/http"
 
-	"github.com/aegis/internal/config"
+	"github.com/HAL-X9/aegis/internal/config"
 )
 
 func NewPublicServer(cfg *config.Runtime, executor RequestExecutor) *http.Server {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/aegis/internal/controlplane/ir"
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/controlplane/ir"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 // Policies compiles the normalized IR policies into a highly optimized,

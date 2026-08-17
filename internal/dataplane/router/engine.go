@@ -3,7 +3,7 @@ package router
 import (
 	"fmt"
 
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 // Engine encapsulates compiled routing structures required at request time.

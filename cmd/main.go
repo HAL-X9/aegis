@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log"
 
-	"github.com/aegis/internal/app"
+	"github.com/HAL-X9/aegis/internal/app"
 )
 
 func main() {

@@ -1,6 +1,6 @@
 package snapshot
 
-import "github.com/aegis/internal/contracts/methodmask"
+import "github.com/HAL-X9/aegis/internal/contracts/methodmask"
 
 // CompiledRoute is the immutable runtime representation of a routing rule.
 type CompiledRoute struct {

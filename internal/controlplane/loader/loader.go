@@ -3,9 +3,9 @@ package loader
 import (
 	"fmt"
 
-	"github.com/aegis/internal/config"
-	"github.com/aegis/internal/controlplane/schema"
-	"github.com/aegis/internal/controlplane/validate"
+	"github.com/HAL-X9/aegis/internal/config"
+	"github.com/HAL-X9/aegis/internal/controlplane/schema"
+	"github.com/HAL-X9/aegis/internal/controlplane/validate"
 )
 
 // Load reads the YAML file at path, unmarshals it into AegisManifest, and runs Validate.

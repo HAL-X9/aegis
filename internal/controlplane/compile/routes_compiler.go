@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/aegis/internal/contracts/methodmask"
-	"github.com/aegis/internal/controlplane/ir"
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
+	"github.com/HAL-X9/aegis/internal/controlplane/ir"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 // Routes transforms normalized route definitions into immutable route

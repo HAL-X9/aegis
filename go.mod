@@ -1,4 +1,4 @@
-module github.com/aegis
+module github.com/HAL-X9/aegis
 
 go 1.26.0
 

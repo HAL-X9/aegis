@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aegis/internal/config"
-	"github.com/aegis/internal/controlplane/loader"
+	"github.com/HAL-X9/aegis/internal/config"
+	"github.com/HAL-X9/aegis/internal/controlplane/loader"
 )
 
 var runtimeConfigPath string

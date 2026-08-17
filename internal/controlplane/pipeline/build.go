@@ -3,10 +3,10 @@ package pipeline
 import (
 	"fmt"
 
-	"github.com/aegis/internal/controlplane/compile"
-	"github.com/aegis/internal/controlplane/normalize"
-	"github.com/aegis/internal/controlplane/schema"
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/controlplane/compile"
+	"github.com/HAL-X9/aegis/internal/controlplane/normalize"
+	"github.com/HAL-X9/aegis/internal/controlplane/schema"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 // Build compiles the gateway configuration into a runtime snapshot.

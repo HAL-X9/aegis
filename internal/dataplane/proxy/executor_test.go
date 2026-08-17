@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aegis/internal/contracts/methodmask"
-	"github.com/aegis/internal/controlplane/snapshot"
-	"github.com/aegis/internal/dataplane/router"
+	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/dataplane/router"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

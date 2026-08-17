@@ -1,7 +1,7 @@
 package router
 
 import (
-	"github.com/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
 // RadixTrie is a radix-based path index for compiled routes.

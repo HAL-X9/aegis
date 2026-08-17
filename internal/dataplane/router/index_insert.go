@@ -1,28 +1,8 @@
 package router
 
 import (
-	"bytes"
-
 	"github.com/aegis/internal/controlplane/snapshot"
 )
-
-// RadixNode represents a single trie node in the radix index.
-// The node stores fixed-segment edges in children and dedicated edges for
-// parameter and wildcard matches.
-type RadixNode struct {
-	// prefix stores a static path segment for this edge.
-	prefix []byte
-
-	// children contains static-segment descendants.
-	children []*RadixNode
-	// paramChild stores the descendant for named parameters (for example, :id).
-	paramChild *RadixNode
-	// wildcardChild stores the descendant for wildcard captures (for example, *rest).
-	wildcardChild *RadixNode
-
-	// candidates contains routes that terminate at this node.
-	candidates []*RouteIndexEntry
-}
 
 // RadixTrie is a radix-based path index for compiled routes.
 type RadixTrie struct {
@@ -36,56 +16,153 @@ type RouteIndexEntry struct {
 }
 
 // Insert registers a route entry under the provided normalized path.
-func (trie *RadixTrie) Insert(path string, entry *RouteIndexEntry) {
-	if trie.root == nil {
-		trie.root = &RadixNode{}
+//
+// Insert is a setup-time operation (route table construction), so it
+// favors correctness and real radix compression over avoiding
+// allocations. Lookup, which runs on the request hot path, does not
+// allocate at all — see lookup.go.
+func (t *RadixTrie) Insert(path string, entry *RouteIndexEntry) {
+	if t.root == nil {
+		t.root = &RadixNode{}
 	}
 
-	node := trie.root
-	offset := 0
-	slash := byte('/')
+	node := t.root
+	remaining := []byte(path)
 
-	for i := 0; i <= len(path); i++ {
-		if i == len(path) || path[i] == slash {
-			// Extract one path segment and advance to the next segment start.
-			segment := []byte(path[offset:i])
-			offset = i + 1
+	for len(remaining) > 0 {
+		if remaining[0] == '/' {
+			remaining = remaining[1:]
+			continue
+		}
 
-			var next *RadixNode
+		segment, rest := nextSegment(remaining)
+		remaining = rest
 
-			// Prefer an existing static edge for deterministic lookup behavior.
-			for _, child := range node.children {
-				if bytes.Equal(child.prefix, segment) {
-					next = child
-					break
-				}
+		switch segment[0] {
+		case ':':
+			if node.paramChild == nil {
+				node.paramChild = &RadixNode{}
 			}
+			node = node.paramChild
 
-			if next == nil {
-				// Dynamic edges are keyed by segment type (:param or *wildcard).
-				if len(segment) > 0 && segment[0] == ':' {
-					if node.paramChild == nil {
-						node.paramChild = &RadixNode{}
-					}
-					next = node.paramChild
-				} else if len(segment) > 0 && segment[0] == '*' {
-					if node.wildcardChild == nil {
-						node.wildcardChild = &RadixNode{}
-					}
-					next = node.wildcardChild
-				} else {
-					next = &RadixNode{
-						prefix: segment,
-					}
-					node.children = append(node.children, next)
-				}
+		case '*':
+			if node.wildcardChild == nil {
+				node.wildcardChild = &RadixNode{}
 			}
+			node = node.wildcardChild
+			remaining = nil // wildcard consumes the rest of the path
 
-			// Descend into the selected edge and continue processing.
-			node = next
+		default:
+			node = insertStaticSegment(node, segment)
 		}
 	}
 
-	// Attach the route to the terminal node for this path.
 	node.candidates = append(node.candidates, entry)
+}
+
+// insertStaticSegment inserts one static path segment under node,
+// creating or splitting compressed edges as needed, and returns the node
+// that represents the end of that segment (i.e. the node the next path
+// segment, or the route's candidates, should be attached to).
+//
+// This is the mirror image of lookupStaticSegment in lookup.go: both
+// walk node.children byte-range by byte-range until segment is fully
+// consumed. Keeping the two in lockstep is what makes compression safe.
+func insertStaticSegment(node *RadixNode, segment []byte) *RadixNode {
+	for len(segment) > 0 {
+		idx, child := findChildByFirstByte(node, segment[0])
+		if child == nil {
+			leaf := &RadixNode{prefix: cloneBytes(segment)}
+			node.children = append(node.children, leaf)
+			return leaf
+		}
+
+		common := commonPrefixLen(child.prefix, segment)
+
+		if common == len(child.prefix) {
+			// The existing edge is fully consumed (possibly with
+			// segment fully consumed too, in which case the loop
+			// simply exits on the next check). Keep walking its
+			// children with whatever remains of segment.
+			node = child
+			segment = segment[common:]
+			continue
+		}
+
+		// The existing edge only partially matches: split it at the
+		// common boundary so the old suffix and the new suffix become
+		// siblings under a shared, newly created parent.
+		split := splitChild(node, idx, child, common)
+
+		segment = segment[common:]
+		if len(segment) == 0 {
+			return split
+		}
+
+		leaf := &RadixNode{prefix: cloneBytes(segment)}
+		split.children = append(split.children, leaf)
+		return leaf
+	}
+
+	return node
+}
+
+// splitChild splits child's prefix at byte offset common, replacing it
+// in place under parent with a new intermediate node:
+//
+//	before:  parent -[prefix]-------------> child
+//	after:   parent -[prefix[:common]]-> split -[prefix[common:]]-> child
+func splitChild(parent *RadixNode, idx int, child *RadixNode, common int) *RadixNode {
+	split := &RadixNode{
+		prefix:   cloneBytes(child.prefix[:common]),
+		children: []*RadixNode{child},
+	}
+
+	child.prefix = cloneBytes(child.prefix[common:])
+	parent.children[idx] = split
+
+	return split
+}
+
+// findChildByFirstByte returns the static child edge starting with b, if
+// any. The radix invariant maintained by insertStaticSegment/splitChild
+// guarantees at most one such child exists, which is what lets Lookup do
+// a single linear scan per level with no backtracking between static
+// children.
+func findChildByFirstByte(node *RadixNode, b byte) (int, *RadixNode) {
+	for i, child := range node.children {
+		if child.prefix[0] == b {
+			return i, child
+		}
+	}
+	return -1, nil
+}
+
+// nextSegment splits off the next '/'-delimited segment from path.
+// path must be non-empty and must not start with '/'.
+func nextSegment(path []byte) (segment, rest []byte) {
+	for i, b := range path {
+		if b == '/' {
+			return path[:i], path[i:]
+		}
+	}
+	return path, nil
+}
+
+func cloneBytes(b []byte) []byte {
+	out := make([]byte, len(b))
+	copy(out, b)
+	return out
+}
+
+func commonPrefixLen(a, b []byte) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	i := 0
+	for i < n && a[i] == b[i] {
+		i++
+	}
+	return i
 }

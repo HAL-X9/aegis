@@ -1,62 +1,89 @@
 package router
 
-import "bytes"
+// RadixNode is a radix trie node.
+//
+// Static edges use radix compression within a path segment. Once a segment
+// is fully consumed, children represent the next segment. A node may contain
+// candidates and still have children, allowing routes such as "/ab" and
+// "/abcd" to coexist.
+type RadixNode struct {
+	prefix []byte
 
-// Lookup resolves compiled routes for the provided request path.
-// The method returns all candidates that match the path shape; method-based
-// filtering is expected to be applied by the caller or downstream representation.
-func (trie *RadixTrie) Lookup(path []byte) []*RouteIndexEntry {
-	if trie.root == nil {
+	// Static edges. Children have unique first bytes.
+	children []*RadixNode
+
+	paramChild    *RadixNode
+	wildcardChild *RadixNode
+
+	candidates []*RouteIndexEntry
+}
+
+// Lookup resolves route candidates for path.
+//
+// Priority: static > param > wildcard.
+// The hot path performs no heap allocations.
+func (t *RadixTrie) Lookup(path []byte) []*RouteIndexEntry {
+	if t == nil || t.root == nil {
+		return nil
+	}
+	return lookup(t.root, path)
+}
+
+func lookup(node *RadixNode, path []byte) []*RouteIndexEntry {
+	for len(path) > 0 && path[0] == '/' {
+		path = path[1:]
+	}
+
+	if len(path) == 0 {
+		if len(node.candidates) > 0 {
+			return node.candidates
+		}
+		if node.wildcardChild != nil {
+			return node.wildcardChild.candidates
+		}
 		return nil
 	}
 
-	node := trie.root
-	slash := byte('/')
-	offset := 0
+	end := 0
+	for end < len(path) && path[end] != '/' {
+		end++
+	}
+	segment, rest := path[:end], path[end:]
 
-	var lastCandidate *RadixNode
+	if result := lookupStaticSegment(node, segment, rest); result != nil {
+		return result
+	}
 
-	for i := 0; i <= len(path); i++ {
-		var segment []byte
-		var next *RadixNode
-
-		if i == len(path) || path[i] == slash {
-			segment = path[offset:i]
-			offset = i + 1
-
-			for _, child := range node.children {
-				if bytes.Equal(segment, child.prefix) {
-					next = child
-					break
-				}
-			}
-
-			if next == nil && node.paramChild != nil && len(segment) > 0 {
-				next = node.paramChild
-			}
-
-			if next == nil && node.wildcardChild != nil {
-				return node.wildcardChild.candidates
-			}
-
-			if next == nil {
-				if lastCandidate != nil {
-					return lastCandidate.candidates
-				}
-				return nil
-			}
-
-			node = next
-
-			if len(node.candidates) > 0 {
-				lastCandidate = node
-			}
+	if node.paramChild != nil {
+		if result := lookup(node.paramChild, rest); result != nil {
+			return result
 		}
 	}
 
-	if lastCandidate != nil {
-		return lastCandidate.candidates
+	if node.wildcardChild != nil {
+		return node.wildcardChild.candidates
 	}
 
 	return nil
+}
+
+// lookupStaticSegment matches the complete segment through compressed
+// static edges, then continues with the remaining path.
+func lookupStaticSegment(node *RadixNode, segment, rest []byte) []*RouteIndexEntry {
+	for len(segment) > 0 {
+		_, child := findChildByFirstByte(node, segment[0])
+		if child == nil {
+			return nil
+		}
+
+		n := len(child.prefix)
+		if n > len(segment) || commonPrefixLen(child.prefix, segment) != n {
+			return nil
+		}
+
+		node = child
+		segment = segment[n:]
+	}
+
+	return lookup(node, rest)
 }

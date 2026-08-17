@@ -1,6 +1,3 @@
-# version: routeconfig/v1
-# kind: RouteConfig
-
 # ------------------------ Services ------------------------
 
 services:
@@ -9,6 +6,12 @@ services:
       scheme: http
       host: mock-upstream
       port: 8082
+
+  order-service:
+    upstream:
+      scheme: http
+      host: mock-upstream
+      port: 8083
 
 # ------------------------ Routes ------------------------
 
@@ -25,6 +28,20 @@ routes:
         X-Client-Channel: [web, mobile]
         X-Device-Id: []
         X-Correlation-Id: []
+    policies:
+      - name: security-headers
+
+  - name: user-orders
+    service: order-service
+    match:
+      path_prefix: /api/v1/orders
+      methods: [GET]
+      headers:
+        Authorization: [ ]
+        X-Request-Id: [ ]
+        X-Client-Channel: [ web, mobile ]
+        X-Device-Id: [ ]
+        X-Correlation-Id: [ ]
     policies:
       - name: security-headers
 

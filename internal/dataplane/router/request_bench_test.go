@@ -249,7 +249,7 @@ func requestMethodBit(method string) methodmask.MethodMask {
 // BenchmarkLookupHighFanout measures the radix path lookup in isolation across table
 // sizes. This is the floor cost every request pays regardless of policy.
 func BenchmarkLookupHighFanout(b *testing.B) {
-	for _, size := range []int{16, 64, 256, 512, 1024, 2048, 4096} {
+	for _, size := range []int{16, 64, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768} {
 		engine, path := buildBenchEngine(b, size, methodUnrestricted, headerNone)
 
 		nodes, maxChildren, avgChildren := trieStats(engine.trie.root)
@@ -275,7 +275,7 @@ func BenchmarkLookupHighFanout(b *testing.B) {
 }
 
 func BenchmarkLookupDeep(b *testing.B) {
-	for _, size := range []int{16, 64, 256, 512, 1024, 2048, 4096} {
+	for _, size := range []int{16, 64, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768} {
 		engine, path := buildDeepBenchEngine(b, size)
 
 		nodes, maxChildren, avgChildren := trieStats(engine.trie.root)

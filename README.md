@@ -1,17 +1,23 @@
 # Aegis
 
-Gateway runtime for routing, policy enforcement, proxying, and observability.
+A high-performance HTTP API gateway written in Go — routing, policy enforcement, proxying, and observability, built around a strict separation between control plane and data plane.
 
-Aegis is an edge-oriented execution environment: declarative configuration defines how inbound traffic is matched, authorized or constrained, forwarded to upstream services, and observed. The same binary is intended to run on bare metal, in containers, and in orchestrated environments without changing the core semantics of routing, policy evaluation, and proxy behavior.
+Configuration (routes, services, policies) is compiled once at startup into immutable, allocation-free lookup structures. The request hot path never parses config, never touches a map with string-building keys, and never allocates on the common case — it only walks a precompiled radix trie and dispatches.
 
-The project is under active development; public interfaces and configuration schemas may evolve until an initial stable release.
+```
+BenchmarkLookupHighFanout/routes=8192-10     12,976,374    91.07 ns/op    0 B/op    0 allocs/op
+BenchmarkLookupDeep/routes=4096-10            8,824,230   132.10 ns/op    0 B/op    0 allocs/op
+BenchmarkLookupMixed/routes=12288-10          8,213,004   145.60 ns/op    0 B/op    0 allocs/op
+```
+High-fanout route lookup stays below 100ns across 16–32,768 routes, with 0 allocations per operation. Deep and mixed-path lookups (interleaved static/param/wildcard routes) stay allocation-free as well, with latency in the ~116–146ns range across the tested route counts. Full benchmark suite in internal/dataplane/router.
 
+## Why
+
+Most gateway tutorials route with `map[string]http.Handler` and re-derive behavior from config on every request. Aegis instead treats configuration as a **build artifact**: control plane loads, normalizes, validates, and compiles YAML into a snapshot; data plane only ever executes against that compiled snapshot. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full request lifecycle and the reasoning behind each design decision.
 
 ## Quick start
 
-Run Aegis locally from source or using Docker.
-
-#### Run from source.
+### Run from source
 
 ```bash
 git clone https://github.com/HAL-X9/aegis.git
@@ -20,7 +26,7 @@ go mod download
 go run ./cmd -config configs/aegis.yaml -routes configs/gateway.yaml
 ```
 
-#### Run with Docker.
+### Run with Docker
 
 ```bash
 git clone https://github.com/HAL-X9/aegis.git
@@ -28,14 +34,14 @@ cd aegis
 docker compose up -d --build
 ```
 
-#### Alternative: environment-based configuration
+### Configuration sources
 
-If CLI flags are omitted, Aegis resolves config paths from environment variables.
-When both are provided, **CLI flags win**.
+Aegis resolves config paths from CLI flags first, then environment variables. If neither is set, startup fails with an explicit error rather than falling back to a hidden default.
 
-Path resolution is straightforward: for runtime config, Aegis uses `-config` first and falls back to `AEGIS_RUNTIME_CONFIG_PATH`; for routes config, it uses `-routes` first and falls back to `AEGIS_ROUTES_CONFIG_PATH`. If neither source is set for runtime or routes, startup fails with a clear error.
-
-Example (env-only startup):
+| Config  | Flag      | Env var                     |
+|---------|-----------|-----------------------------|
+| Runtime | `-config` | `AEGIS_RUNTIME_CONFIG_PATH` |
+| Routes  | `-routes` | `AEGIS_ROUTES_CONFIG_PATH`  |
 
 ```bash
 export AEGIS_RUNTIME_CONFIG_PATH=configs/aegis.yaml
@@ -43,30 +49,33 @@ export AEGIS_ROUTES_CONFIG_PATH=configs/gateway.yaml
 go run ./cmd
 ```
 
-### Verify the listener
-
-With the sample configuration, verify the system listener liveness endpoint:
+### Verify it's running
 
 ```bash
 curl -i http://127.0.0.1:18080/livez
 ```
 
-Liveness responds on **`GET /livez`** from the system plane. Public traffic is served on **`:8080`** and forwarded through the dataplane using routes from `configs/gateway.yaml`.
+Public traffic is served on `:8080` and routed through the data plane using `configs/gateway.yaml`. The system plane (health, metrics) listens separately on `:18080`, so operational endpoints are never exposed on the same surface as user traffic.
 
-For a non-HTTP check of the listening socket:
-
-```bash
-lsof -nP -iTCP:8080 -sTCP:LISTEN
-lsof -nP -iTCP:18080 -sTCP:LISTEN
-```
-
-### Production-oriented execution
-
-For deployment outside ad-hoc development, build a static binary from the repository root and invoke it with the same configuration contract:
+### Production build
 
 ```bash
 go build -o app ./cmd
 ./app -config /path/to/aegis.yaml -routes /path/to/gateway.yaml
 ```
 
-Run the binary under your platform’s process supervisor or container entrypoint; ensure `AEGIS_RUNTIME_CONFIG_PATH`/`-config` and `AEGIS_ROUTES_CONFIG_PATH`/`-routes` are set consistently with your release artifact and configuration management practices.
+## Testing & benchmarks
+
+```bash
+go test ./...
+go test ./internal/dataplane/router/ -bench . -benchmem
+```
+
+## Status
+
+Aegis is pre-1.0 and under active development. Public interfaces and config schemas may change.
+
+## Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — design decisions, request lifecycle, package layout
+- [docs/policies.md](docs/policies.md) — policy engine and header mutations

@@ -28,8 +28,12 @@ services:
     restart: on-failure
 
   mock-upstream:
-    image: python:3.13-alpine
+    image: golang:1.26-alpine
+    container_name: aegis-mock-upstream
     working_dir: /srv
-    command: python server.py
+    command: go run server.go
+    environment:
+      MOCK_ADDR: ":8082"
     volumes:
-      - ./mock:/srv
+      - ./mock:/srv:ro
+    restart: on-failure

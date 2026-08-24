@@ -29,7 +29,7 @@ func (h *SystemHandler) Livez(w http.ResponseWriter, _ *http.Request) {
 	_, _ = io.WriteString(w, "ok\n")
 }
 
-func (h *SystemHandler) Readiness(w http.ResponseWriter, _ *http.Request) {
+func (h *SystemHandler) Readyz(w http.ResponseWriter, _ *http.Request) {
 	if err := h.probe.Readiness(); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = io.WriteString(w, "service not ready\n")

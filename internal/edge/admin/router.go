@@ -8,6 +8,6 @@ import (
 func NewRouter(h *SystemHandler) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /livez", h.Livez)
-	mux.HandleFunc("GET /readyz", h.Readiness)
+	mux.HandleFunc("GET /readyz", h.Readyz)
 	return mux
 }

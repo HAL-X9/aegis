@@ -4,11 +4,14 @@ import (
 	"net/http"
 
 	"github.com/HAL-X9/aegis/internal/config"
+	"github.com/HAL-X9/aegis/internal/dataplane/middleware"
 )
 
 func NewPublicServer(cfg *config.Runtime, executor RequestExecutor) *http.Server {
 	forward := NewForwardHandler(executor)
-	publicHandler := NewRouter(forward)
+	publicHandler := http.Handler(NewRouter(forward))
+
+	publicHandler = middleware.RequestID(publicHandler)
 
 	publicHTTP := &http.Server{
 		Addr:              cfg.Listeners.Public.Addr,

@@ -8,17 +8,11 @@ import (
 	"github.com/google/uuid"
 )
 
-type RequestIDMiddleware struct{}
-
 type contextKey struct{ name string }
 
 var requestIDKey = &contextKey{"request_id"}
 
-func NewRequestIDMiddleware() *RequestIDMiddleware {
-	return &RequestIDMiddleware{}
-}
-
-func (m *RequestIDMiddleware) RequestID(next http.Handler) http.Handler {
+func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID, err := uuid.NewV7()
 		if err != nil {
@@ -26,6 +20,8 @@ func (m *RequestIDMiddleware) RequestID(next http.Handler) http.Handler {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
+
+		slog.Info("request received", "request_id", requestID)
 
 		ctx := context.WithValue(r.Context(), requestIDKey, requestID)
 

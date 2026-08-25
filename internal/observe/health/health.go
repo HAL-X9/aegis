@@ -18,9 +18,6 @@ func (h *Health) SetShuttingDown(v bool) {
 }
 
 func (h *Health) Liveness() error {
-	if h.shuttingDown.Load() {
-		return errors.New("service shutting down")
-	}
 	return nil
 }
 

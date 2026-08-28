@@ -10,7 +10,7 @@ listeners:
     max_header_bytes: 1048576
 
   system:
-    addr: "127.0.0.1:18080"
+    addr: "0.0.0.0:18080"
     timeouts:
       read_timeout: 5s
       read_header_timeout: 2s

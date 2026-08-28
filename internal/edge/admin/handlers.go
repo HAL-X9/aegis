@@ -11,11 +11,15 @@ type Probe interface {
 }
 
 type SystemHandler struct {
-	probe Probe
+	probe   Probe
+	metrics http.Handler
 }
 
-func NewSystemHandler(probe Probe) *SystemHandler {
-	return &SystemHandler{probe: probe}
+func NewSystemHandler(probe Probe, metrics http.Handler) *SystemHandler {
+	return &SystemHandler{
+		probe:   probe,
+		metrics: metrics,
+	}
 }
 
 func (h *SystemHandler) Livez(w http.ResponseWriter, _ *http.Request) {
@@ -38,4 +42,8 @@ func (h *SystemHandler) Readyz(w http.ResponseWriter, _ *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, "ready\n")
+}
+
+func (h *SystemHandler) Metrics(w http.ResponseWriter, r *http.Request) {
+	h.metrics.ServeHTTP(w, r)
 }

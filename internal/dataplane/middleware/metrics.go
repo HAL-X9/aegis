@@ -39,7 +39,7 @@ func NewMetricsMiddleware(m *metrics.Metrics) *MetricsMiddleware {
 	}
 }
 
-func (m *MetricsMiddleware) Handler(next http.Handler) http.Handler {
+func (m *MetricsMiddleware) Metrics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec := recorderPool.Get().(*statusRecorder)
 
@@ -57,7 +57,6 @@ func (m *MetricsMiddleware) Handler(next http.Handler) http.Handler {
 
 		m.metrics.RecordHTTPRequest(
 			r.Method,
-			r.URL.Path,
 			rec.status,
 			elapsed,
 		)

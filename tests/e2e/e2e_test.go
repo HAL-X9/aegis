@@ -23,6 +23,7 @@ import (
 	"github.com/HAL-X9/aegis/internal/app"
 	"github.com/HAL-X9/aegis/internal/config"
 	"github.com/HAL-X9/aegis/internal/controlplane/loader"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // newMockUpstream starts a real HTTP server standing in for a proxied
@@ -167,10 +168,13 @@ policies:
 		t.Fatalf("loader.Load: %v", err)
 	}
 
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+
 	deps, err := app.Bootstrap(runtimeConfig, gatewayConfig)
 	if err != nil {
 		t.Fatalf("app.Bootstrap: %v", err)
 	}
+
 	return deps
 }
 

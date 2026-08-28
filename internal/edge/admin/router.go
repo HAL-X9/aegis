@@ -9,5 +9,6 @@ func NewRouter(h *SystemHandler) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /livez", h.Livez)
 	mux.HandleFunc("GET /readyz", h.Readyz)
+	mux.HandleFunc("GET /metrics", h.Metrics)
 	return mux
 }

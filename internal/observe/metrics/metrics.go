@@ -21,7 +21,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 				Name:      "http_requests_total",
 				Help:      "Total number of HTTP request.",
 			},
-			[]string{"method", "route", "status"},
+			[]string{"method", "status"},
 		),
 		HTTPRequestDuration: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
@@ -43,7 +43,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 					10,
 				},
 			},
-			[]string{"method", "route"},
+			[]string{"method"},
 		),
 		HTTPActiveRequests: prometheus.NewGauge(
 			prometheus.GaugeOpts{
@@ -62,7 +62,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	return m
 }
 
-func (m *Metrics) RecordHTTPRequest(method, route string, statusCode int, duration time.Duration) {
-	m.HTTPRequestTotal.WithLabelValues(method, route, strconv.Itoa(statusCode)).Inc()
-	m.HTTPRequestDuration.WithLabelValues(method, route).Observe(duration.Seconds())
+func (m *Metrics) RecordHTTPRequest(method string, statusCode int, duration time.Duration) {
+	m.HTTPRequestTotal.WithLabelValues(method, strconv.Itoa(statusCode)).Inc()
+	m.HTTPRequestDuration.WithLabelValues(method).Observe(duration.Seconds())
 }

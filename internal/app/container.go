@@ -14,6 +14,9 @@ import (
 	edgeadmin "github.com/HAL-X9/aegis/internal/edge/admin"
 	edgepublic "github.com/HAL-X9/aegis/internal/edge/public"
 	"github.com/HAL-X9/aegis/internal/observe/health"
+	"github.com/HAL-X9/aegis/internal/observe/metrics"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Dependencies struct {
@@ -37,9 +40,6 @@ func Bootstrap(cfg *config.Runtime, config *schema.GatewayConfig) (*Dependencies
 		return nil, fmt.Errorf("failed to build gateway pipeline: %w", err)
 	}
 
-	healthSvc := health.NewHealth()
-	systemHTTP := edgeadmin.NewSystemServer(cfg, healthSvc)
-
 	engine, err := router.BuildEngine(compiled)
 	if err != nil {
 		return nil, fmt.Errorf("pipeline route engine: %w", err)
@@ -47,7 +47,17 @@ func Bootstrap(cfg *config.Runtime, config *schema.GatewayConfig) (*Dependencies
 
 	upstreamTransport := newUpstreamTransport(&cfg.UpstreamTransport)
 	executor := proxy.NewExecutor(engine, upstreamTransport)
-	publicHTTP := edgepublic.NewPublicServer(cfg, executor)
+
+	metricsCollector := metrics.NewMetrics(prometheus.DefaultRegisterer)
+	metricsHandler := promhttp.Handler()
+	healthSvc := health.NewHealth()
+	systemHTTP := edgeadmin.NewSystemServer(
+		cfg,
+		healthSvc,
+		metricsHandler,
+	)
+
+	publicHTTP := edgepublic.NewPublicServer(cfg, executor, metricsCollector)
 
 	return &Dependencies{
 		Config:     cfg,

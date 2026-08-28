@@ -13,6 +13,12 @@ services:
       host: mock-upstream
       port: 8083
 
+  benchmark:
+    upstream:
+      scheme: http
+      host: mock-upstream
+      port: 8082
+
 # ------------------------ Routes ------------------------
 
 routes:
@@ -45,6 +51,11 @@ routes:
     policies:
       - name: security-headers
 
+  - name: benchmark
+    service: benchmark
+    match:
+      path_prefix: /benchmark
+      methods: [GET]
 
 # ------------------------ Policies ------------------------
 

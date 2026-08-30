@@ -27,7 +27,7 @@ func (t *RadixTrie) Insert(path string, entry *RouteIndexEntry) {
 	}
 
 	node := t.root
-	remaining := []byte(path)
+	remaining := path
 
 	for len(remaining) > 0 {
 		if remaining[0] == '/' {
@@ -50,7 +50,7 @@ func (t *RadixTrie) Insert(path string, entry *RouteIndexEntry) {
 				node.wildcardChild = &RadixNode{}
 			}
 			node = node.wildcardChild
-			remaining = nil // wildcard consumes the rest of the path
+			remaining = "" // wildcard consumes the rest of the path
 
 		default:
 			node = insertStaticSegment(node, segment)
@@ -68,11 +68,11 @@ func (t *RadixTrie) Insert(path string, entry *RouteIndexEntry) {
 // This is the mirror image of lookupStaticSegment in lookup.go: both
 // walk node.children byte-range by byte-range until segment is fully
 // consumed. Keeping the two in lockstep is what makes compression safe.
-func insertStaticSegment(node *RadixNode, segment []byte) *RadixNode {
+func insertStaticSegment(node *RadixNode, segment string) *RadixNode {
 	for len(segment) > 0 {
 		idx, child := findChildByFirstByte(node, segment[0])
 		if child == nil {
-			leaf := &RadixNode{prefix: cloneBytes(segment)}
+			leaf := &RadixNode{prefix: segment}
 			node.children = append(node.children, leaf)
 			return leaf
 		}
@@ -99,7 +99,7 @@ func insertStaticSegment(node *RadixNode, segment []byte) *RadixNode {
 			return split
 		}
 
-		leaf := &RadixNode{prefix: cloneBytes(segment)}
+		leaf := &RadixNode{prefix: segment}
 		split.children = append(split.children, leaf)
 		return leaf
 	}
@@ -114,11 +114,11 @@ func insertStaticSegment(node *RadixNode, segment []byte) *RadixNode {
 //	after:   parent -[prefix[:common]]-> split -[prefix[common:]]-> child
 func splitChild(parent *RadixNode, idx int, child *RadixNode, common int) *RadixNode {
 	split := &RadixNode{
-		prefix:   cloneBytes(child.prefix[:common]),
+		prefix:   child.prefix[:common],
 		children: []*RadixNode{child},
 	}
 
-	child.prefix = cloneBytes(child.prefix[common:])
+	child.prefix = child.prefix[common:]
 	parent.children[idx] = split
 
 	return split
@@ -140,22 +140,16 @@ func findChildByFirstByte(node *RadixNode, b byte) (int, *RadixNode) {
 
 // nextSegment splits off the next '/'-delimited segment from path.
 // path must be non-empty and must not start with '/'.
-func nextSegment(path []byte) (segment, rest []byte) {
+func nextSegment(path string) (segment, rest string) {
 	for i, b := range path {
 		if b == '/' {
 			return path[:i], path[i:]
 		}
 	}
-	return path, nil
+	return path, ""
 }
 
-func cloneBytes(b []byte) []byte {
-	out := make([]byte, len(b))
-	copy(out, b)
-	return out
-}
-
-func commonPrefixLen(a, b []byte) int {
+func commonPrefixLen(a, b string) int {
 	n := len(a)
 	if len(b) < n {
 		n = len(b)

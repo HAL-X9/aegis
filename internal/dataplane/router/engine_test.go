@@ -10,9 +10,11 @@ import (
 func TestBuildEngine(t *testing.T) {
 	t.Run("returns error for nil config", func(t *testing.T) {
 		_, err := BuildEngine(nil)
+
 		if err == nil {
 			t.Fatal("expected error")
 		}
+
 		if !strings.Contains(err.Error(), "config is nil") {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -46,7 +48,7 @@ func TestBuildEngine(t *testing.T) {
 			t.Fatal("expected non-nil engine")
 		}
 
-		got := engine.Lookup([]byte("/api"))
+		got := engine.Lookup("/api")
 
 		if len(got) != 1 {
 			t.Fatalf("lookup result = %#v", got)
@@ -70,12 +72,12 @@ func TestEngineLookup(t *testing.T) {
 	t.Run("nil receiver returns nil", func(t *testing.T) {
 		var engine *Engine
 
-		if got := engine.Lookup([]byte("/x")); got != nil {
+		if got := engine.Lookup("/x"); got != nil {
 			t.Fatalf("got %#v, want nil", got)
 		}
 	})
 
-	t.Run("nil path returns nil", func(t *testing.T) {
+	t.Run("empty path returns nil", func(t *testing.T) {
 		engine, err := BuildEngine(&snapshot.CompiledConfig{
 			Services: snapshot.CompiledServices{
 				Items: []snapshot.CompiledService{
@@ -99,7 +101,7 @@ func TestEngineLookup(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if got := engine.Lookup(nil); got != nil {
+		if got := engine.Lookup(""); got != nil {
 			t.Fatalf("got %#v, want nil", got)
 		}
 	})

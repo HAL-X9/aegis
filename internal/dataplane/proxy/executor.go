@@ -56,7 +56,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve all route candidates matching the incoming request path.
-	candidates := executor.engine.Lookup([]byte(r.URL.Path))
+	candidates := executor.engine.Lookup(r.URL.Path)
 	if len(candidates) == 0 {
 		http.NotFound(w, r)
 		return

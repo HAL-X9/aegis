@@ -7,7 +7,7 @@ package router
 // candidates and still have children, allowing routes such as "/ab" and
 // "/abcd" to coexist.
 type RadixNode struct {
-	prefix []byte
+	prefix string
 
 	// Static edges. Children have unique first bytes.
 	children []*RadixNode
@@ -22,14 +22,14 @@ type RadixNode struct {
 //
 // Priority: static > param > wildcard.
 // The hot path performs no heap allocations.
-func (t *RadixTrie) Lookup(path []byte) []*RouteIndexEntry {
+func (t *RadixTrie) Lookup(path string) []*RouteIndexEntry {
 	if t == nil || t.root == nil {
 		return nil
 	}
 	return lookup(t.root, path)
 }
 
-func lookup(node *RadixNode, path []byte) []*RouteIndexEntry {
+func lookup(node *RadixNode, path string) []*RouteIndexEntry {
 	for len(path) > 0 && path[0] == '/' {
 		path = path[1:]
 	}
@@ -69,7 +69,7 @@ func lookup(node *RadixNode, path []byte) []*RouteIndexEntry {
 
 // lookupStaticSegment matches the complete segment through compressed
 // static edges, then continues with the remaining path.
-func lookupStaticSegment(node *RadixNode, segment, rest []byte) []*RouteIndexEntry {
+func lookupStaticSegment(node *RadixNode, segment, rest string) []*RouteIndexEntry {
 	for len(segment) > 0 {
 		_, child := findChildByFirstByte(node, segment[0])
 		if child == nil {

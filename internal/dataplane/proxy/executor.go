@@ -3,6 +3,7 @@ package proxy
 import (
 	"io"
 	"net/http"
+	"sync"
 
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
@@ -21,6 +22,13 @@ type Executor struct {
 	// transport is responsible for executing outbound HTTP requests.
 	// It must be non-nil and safe for concurrent use.
 	transport http.RoundTripper
+}
+
+var copyBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 32*1024)
+		return &buf
+	},
 }
 
 // NewExecutor creates a new Executor instance.
@@ -144,5 +152,9 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		policy.ExecuteMutations(w.Header(), &matchedEntry.Route.Headers.Response)
 	}
 	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+
+	buf := copyBufferPool.Get().(*[]byte)
+	defer copyBufferPool.Put(buf)
+
+	_, _ = io.CopyBuffer(w, resp.Body, *buf)
 }

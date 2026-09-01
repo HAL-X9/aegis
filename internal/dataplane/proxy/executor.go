@@ -78,7 +78,6 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var target string
 	var methodMatch bool
 	var matchedEntry *router.RouteIndexEntry
 
@@ -88,47 +87,45 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for _, candidate := range candidates {
 		if candidate.Route.Match.Methods&methodBit != 0 {
 			methodMatch = true
+
 			if router.HeadersMatch(candidate.Route.Match.Headers, r.Header) {
-				target = candidate.Upstream + r.URL.EscapedPath()
-				if r.URL.RawQuery != "" {
-					target += "?" + r.URL.RawQuery
-				}
 				matchedEntry = candidate
 				break
 			}
-			continue
 		}
 	}
 
-	// At least one route matched the path, but none accepted the method.
-	if target == "" {
+	if matchedEntry == nil {
 		if !methodMatch {
 			http.Error(w, "method not allowed for matched route", http.StatusMethodNotAllowed)
 			return
 		}
+
 		http.NotFound(w, r)
 		return
 	}
 
-	// Construct the upstream request while preserving:
-	//   - request context
-	//   - HTTP method
-	//   - original request body stream
-	req, err := http.NewRequestWithContext(
-		r.Context(),
-		r.Method,
-		target,
-		r.Body,
-	)
-	if err != nil {
-		http.Error(w, "failed to create upstream request", http.StatusInternalServerError)
-		return
+	upstreamURL := *matchedEntry.UpstreamURL
+
+	upstreamURL.Path = r.URL.Path
+	upstreamURL.RawPath = r.URL.RawPath
+	upstreamURL.RawQuery = r.URL.RawQuery
+
+	req := &http.Request{
+		Method:        r.Method,
+		URL:           &upstreamURL,
+		Header:        r.Header,
+		Body:          r.Body,
+		GetBody:       nil,
+		ContentLength: r.ContentLength,
 	}
 
-	req.Header = r.Header.Clone()
-	if matchedEntry != nil {
-		policy.ExecuteMutations(req.Header, &matchedEntry.Route.Headers.Request)
-	}
+	req = req.WithContext(r.Context())
+
+	policy.ExecuteMutations(
+		req.Header,
+		&matchedEntry.Route.Headers.Request,
+	)
 
 	request.RemoveHopHeaders(req.Header)
 
@@ -143,14 +140,16 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	for key, values := range resp.Header {
-		for _, value := range values {
-			w.Header().Add(key, value)
-		}
+		w.Header()[key] = append(w.Header()[key], values...)
 	}
 
 	if matchedEntry != nil {
-		policy.ExecuteMutations(w.Header(), &matchedEntry.Route.Headers.Response)
+		policy.ExecuteMutations(
+			w.Header(),
+			&matchedEntry.Route.Headers.Response,
+		)
 	}
+
 	w.WriteHeader(resp.StatusCode)
 
 	buf := copyBufferPool.Get().(*[]byte)

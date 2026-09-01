@@ -1,6 +1,8 @@
 package router
 
 import (
+	"net/url"
+
 	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
@@ -11,8 +13,11 @@ type RadixTrie struct {
 
 // RouteIndexEntry groups route candidates and their method mask.
 type RouteIndexEntry struct {
-	Route    *snapshot.CompiledRoute
-	Upstream string
+	Route *snapshot.CompiledRoute
+
+	// UpstreamURL is parsed once during route compilation.
+	// It must be treated as immutable after the route index is built.
+	UpstreamURL *url.URL
 }
 
 // Insert registers a route entry under the provided normalized path.

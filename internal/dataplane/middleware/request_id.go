@@ -21,8 +21,6 @@ func RequestID(next http.Handler) http.Handler {
 			return
 		}
 
-		slog.Info("request received", "request_id", requestID)
-
 		ctx := context.WithValue(r.Context(), requestIDKey, requestID)
 
 		r = r.WithContext(ctx)

@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"net/url"
 
 	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
@@ -32,9 +33,19 @@ func BuildEngine(cfg *snapshot.CompiledConfig) (*Engine, error) {
 
 		service := &cfg.Services.Items[route.Service]
 
+		upstreamURL, err := url.Parse(service.Upstream)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"route %q references invalid upstream %q: %w",
+				route.Name,
+				service.Upstream,
+				err,
+			)
+		}
+
 		entries = append(entries, &RouteIndexEntry{
-			Route:    route,
-			Upstream: service.Upstream,
+			Route:       route,
+			UpstreamURL: upstreamURL,
 		})
 	}
 

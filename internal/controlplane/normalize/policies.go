@@ -22,7 +22,8 @@ func Policies(cfg *schema.Policies) (*ir.Policies, error) {
 	}
 
 	out := &ir.Policies{
-		Headers: make(map[string]ir.Headers, len(cfg.Headers)),
+		Headers:    make(map[string]ir.Headers, len(cfg.Headers)),
+		RateLimits: make(map[string]ir.RateLimit, len(cfg.RateLimits)),
 	}
 
 	for name, header := range cfg.Headers {
@@ -48,6 +49,10 @@ func Policies(cfg *schema.Policies) (*ir.Policies, error) {
 			Request:  *req,
 			Response: *resp,
 		}
+	}
+
+	for rateLimitName, rl := range cfg.RateLimits {
+		out.RateLimits[rateLimitName] = ir.RateLimit{Rate: rl.Rate, Burst: rl.Burst}
 	}
 
 	return out, nil

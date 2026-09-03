@@ -9,6 +9,7 @@ import (
 	"github.com/HAL-X9/aegis/internal/config"
 	"github.com/HAL-X9/aegis/internal/controlplane/pipeline"
 	"github.com/HAL-X9/aegis/internal/controlplane/schema"
+	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/proxy"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
 	edgeadmin "github.com/HAL-X9/aegis/internal/edge/admin"
@@ -45,8 +46,10 @@ func Bootstrap(cfg *config.Runtime, config *schema.GatewayConfig) (*Dependencies
 		return nil, fmt.Errorf("pipeline route engine: %w", err)
 	}
 
+	rateLimiters := policy.NewRateLimiterSet(compiled.Policies.RateLimits)
+
 	upstreamTransport := newUpstreamTransport(&cfg.UpstreamTransport)
-	executor := proxy.NewExecutor(engine, upstreamTransport)
+	executor := proxy.NewExecutor(engine, rateLimiters, upstreamTransport)
 
 	metricsCollector := metrics.NewMetrics(prometheus.DefaultRegisterer)
 	metricsHandler := promhttp.Handler()

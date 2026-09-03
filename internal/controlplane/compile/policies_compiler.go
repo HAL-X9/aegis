@@ -6,6 +6,7 @@ import (
 
 	"github.com/HAL-X9/aegis/internal/controlplane/ir"
 	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+	"golang.org/x/time/rate"
 )
 
 // Policies compiles the normalized IR policies into a highly optimized,
@@ -25,7 +26,6 @@ func Policies(policies *ir.Policies) (*snapshot.CompiledPolicies, error) {
 	sort.Strings(policyNames)
 
 	compiledHeaders := make([]snapshot.CompiledHeaders, 0, len(policyNames))
-
 	for _, name := range policyNames {
 		compiled, err := compileRouteHeaders(new(policies.Headers[name]), builder)
 		if err != nil {
@@ -35,8 +35,19 @@ func Policies(policies *ir.Policies) (*snapshot.CompiledPolicies, error) {
 		compiledHeaders = append(compiledHeaders, compiled)
 	}
 
+	names := sortedRateLimitNames(policies)
+	compiledRateLimits := make([]snapshot.CompiledRateLimit, 0, len(names))
+	for _, name := range names {
+		rl := policies.RateLimits[name]
+		compiledRateLimits = append(compiledRateLimits, snapshot.CompiledRateLimit{
+			Limit: rate.Limit(rl.Rate),
+			Burst: int(rl.Burst),
+		})
+	}
+
 	return &snapshot.CompiledPolicies{
-		Headers: compiledHeaders,
+		Headers:    compiledHeaders,
+		RateLimits: compiledRateLimits,
 	}, nil
 }
 
@@ -225,4 +236,16 @@ func estimateStringsSize(policies *ir.Policies) int {
 	}
 
 	return total
+}
+
+func sortedRateLimitNames(policies *ir.Policies) []string {
+	if policies == nil {
+		return nil
+	}
+	names := make([]string, 0, len(policies.RateLimits))
+	for name := range policies.RateLimits {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

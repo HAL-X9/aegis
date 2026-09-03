@@ -10,6 +10,7 @@ import (
 
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
 	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
 )
 
@@ -28,6 +29,13 @@ func buildTestEngine(t *testing.T, cfg *snapshot.CompiledConfig) *router.Engine 
 	}
 
 	return engine
+}
+
+// noRateLimits returns a RateLimiterSet with no configured policies, so
+// Allow always permits the request. Used by tests and benchmarks in this
+// package that don't exercise rate-limiting behavior directly.
+func noRateLimits() *policy.RateLimiterSet {
+	return policy.NewRateLimiterSet(nil)
 }
 
 func testConfig(routes ...snapshot.CompiledRoute) *snapshot.CompiledConfig {
@@ -54,7 +62,7 @@ func testConfig(routes ...snapshot.CompiledRoute) *snapshot.CompiledConfig {
 
 func TestExecutor(t *testing.T) {
 	t.Run("returns 503 when engine is nil", func(t *testing.T) {
-		exec := NewExecutor(nil, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := NewExecutor(nil, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -80,7 +88,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := NewExecutor(engine, nil)
+		exec := NewExecutor(engine, noRateLimits(), nil)
 
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/api", nil)
@@ -104,7 +112,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := NewExecutor(engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -130,7 +138,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := NewExecutor(engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -161,7 +169,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := NewExecutor(engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -193,7 +201,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := NewExecutor(engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -220,7 +228,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := NewExecutor(engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("dial failure")
 		}))
 
@@ -248,7 +256,7 @@ func TestExecutor(t *testing.T) {
 
 		var gotURL string
 
-		exec := NewExecutor(engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			gotURL = r.URL.String()
 
 			return &http.Response{
@@ -310,7 +318,7 @@ func TestExecutor(t *testing.T) {
 		var gotURL string
 		var gotBody string
 
-		exec := NewExecutor(engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			gotMethod = r.Method
 			gotURL = r.URL.String()
 

@@ -36,6 +36,7 @@ routes:
         X-Correlation-Id: []
     policies:
       - name: security-headers
+      - name: profile-rate-limit
 
   - name: user-orders
     service: order-service
@@ -50,6 +51,7 @@ routes:
         X-Correlation-Id: [ ]
     policies:
       - name: security-headers
+      - name: order-rate-limit
 
   - name: benchmark
     service: benchmark
@@ -79,4 +81,12 @@ policies:
         remove:
           - Server
 
+  rate_limits:
 
+    profile-rate-limit:
+      rate: 100
+      burst: 1
+
+    order-rate-limit:
+      rate: 20
+      burst: 10

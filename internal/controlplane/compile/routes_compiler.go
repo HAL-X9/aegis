@@ -2,6 +2,7 @@ package compile
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
@@ -53,6 +54,13 @@ func Routes(serviceIDs map[string]snapshot.ServiceID, routes []ir.Route, policie
 			return nil, fmt.Errorf("route %q: compile policy headers: %w", route.Name, err)
 		}
 
+		// Resolve the rate-limit policy referenced by the route, if any, into its
+		// stable snapshot index for O(1) lookup in the dataplane hot path.
+		rateLimitID, err := resolveRouteRateLimitID(route.Name, route.Policies, policies)
+		if err != nil {
+			return nil, fmt.Errorf("route %q: compile policy rate limit: %w", route.Name, err)
+		}
+
 		compiledRoutes = append(compiledRoutes, snapshot.CompiledRoute{
 			Name:    route.Name,
 			Service: serviceID,
@@ -61,8 +69,10 @@ func Routes(serviceIDs map[string]snapshot.ServiceID, routes []ir.Route, policie
 				Methods:    methodMask,
 				Headers:    headerPredicates,
 			},
-
-			Headers: headers,
+			Policies: snapshot.CompiledRoutePolicies{
+				Headers:     headers,
+				RateLimitID: rateLimitID,
+			},
 		})
 	}
 
@@ -202,12 +212,7 @@ func headersOpContains(ops ir.HeadersOps, name string) bool {
 	if _, ok := ops.Set[name]; ok {
 		return true
 	}
-	for _, removed := range ops.Remove {
-		if removed == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ops.Remove, name)
 }
 
 func estimateHeadersSize(headers *ir.Headers) int {
@@ -229,4 +234,25 @@ func estimateHeadersSize(headers *ir.Headers) int {
 		total += len(value)
 	}
 	return total
+}
+
+func resolveRouteRateLimitID(routeName string, refs []ir.PolicyRef, policies *ir.Policies) (int32, error) {
+	names := sortedRateLimitNames(policies)
+	index := make(map[string]int32, len(names))
+	for i, n := range names {
+		index[n] = int32(i)
+	}
+
+	found := int32(-1)
+	for _, ref := range refs {
+		id, ok := index[ref.Name]
+		if !ok {
+			continue
+		}
+		if found != -1 {
+			return -1, fmt.Errorf("route %q references multiple rate-limit policies", routeName)
+		}
+		found = id
+	}
+	return found, nil
 }

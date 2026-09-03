@@ -13,8 +13,8 @@ type CompiledRoute struct {
 	// Match contains all predicates required to determine route applicability.
 	Match CompiledMatch
 
-	// Headers contains pre-compiled tokenized header mutation plans for the request and response paths.
-	Headers CompiledHeaders
+	// Policies groups the route's precompiled policy attachments (headers, rate limit, etc.).
+	Policies CompiledRoutePolicies
 }
 
 // CompiledMatch represents a fully normalized and optimized set of
@@ -51,4 +51,9 @@ type HeaderPredicate struct {
 	//   - len(AllowedValues) == 0: presence-only (header MUST exist, any value accepted)
 	//   - len(AllowedValues) > 0: at least one request value MUST equal one of AllowedValues
 	AllowedValues []string
+}
+
+type CompiledRoutePolicies struct {
+	Headers     CompiledHeaders
+	RateLimitID int32
 }

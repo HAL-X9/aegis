@@ -55,6 +55,9 @@ func TestRoutes(t *testing.T) {
 					PathPrefix: "/v1/",
 					Methods:    methodMask,
 				},
+				Policies: snapshot.CompiledRoutePolicies{
+					RateLimitID: -1, // no rate-limit policy referenced
+				},
 			},
 		}
 

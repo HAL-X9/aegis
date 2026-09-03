@@ -19,6 +19,10 @@ type Executor struct {
 	// engine provides fast path-based route lookup.
 	engine *router.Engine
 
+	// rateLimiters enforces the per-route rate-limit policy compiled into
+	// the snapshot.
+	rateLimiters *policy.RateLimiterSet
+
 	// transport is responsible for executing outbound HTTP requests.
 	// It must be non-nil and safe for concurrent use.
 	transport http.RoundTripper
@@ -32,11 +36,12 @@ var copyBufferPool = sync.Pool{
 }
 
 // NewExecutor creates a new Executor instance.
-// Both engine and transport are required for correct operation.
-func NewExecutor(engine *router.Engine, transport http.RoundTripper) *Executor {
+// engine, rateLimiters, and transport are all required for correct operation.
+func NewExecutor(engine *router.Engine, rateLimiters *policy.RateLimiterSet, transport http.RoundTripper) *Executor {
 	return &Executor{
-		engine:    engine,
-		transport: transport,
+		engine:       engine,
+		rateLimiters: rateLimiters,
+		transport:    transport,
 	}
 }
 
@@ -45,8 +50,10 @@ func NewExecutor(engine *router.Engine, transport http.RoundTripper) *Executor {
 //
 // Behavior:
 //   - returns 503 if the routing engine is unavailable
+//   - returns 500 if the transport is unavailable
 //   - returns 404 if no route matches the request path
 //   - returns 405 if no route supports the request method
+//   - returns 429 if the matched route's rate-limit policy rejects the request
 //   - returns 502 if upstream request execution fails
 //
 // The request body is forwarded as-is to the upstream service.
@@ -105,6 +112,14 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enforce the matched route's rate-limit policy before doing any
+	// further work — this is the cheapest possible rejection point,
+	// before an upstream connection is ever attempted.
+	if !executor.rateLimiters.Allow(matchedEntry.Route) {
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
+
 	upstreamURL := *matchedEntry.UpstreamURL
 
 	upstreamURL.Path = r.URL.Path
@@ -124,7 +139,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	policy.ExecuteMutations(
 		req.Header,
-		&matchedEntry.Route.Headers.Request,
+		&matchedEntry.Route.Policies.Headers.Request,
 	)
 
 	request.RemoveHopHeaders(req.Header)
@@ -143,12 +158,10 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header()[key] = append(w.Header()[key], values...)
 	}
 
-	if matchedEntry != nil {
-		policy.ExecuteMutations(
-			w.Header(),
-			&matchedEntry.Route.Headers.Response,
-		)
-	}
+	policy.ExecuteMutations(
+		w.Header(),
+		&matchedEntry.Route.Policies.Headers.Response,
+	)
 
 	w.WriteHeader(resp.StatusCode)
 

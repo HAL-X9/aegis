@@ -1,5 +1,7 @@
 package snapshot
 
+import "golang.org/x/time/rate"
+
 // HeaderID is a compact runtime identifier.
 //
 // Static well-known headers are resolved during compilation
@@ -131,6 +133,12 @@ type HeaderRegistry struct {
 	Names [][]byte
 }
 
+type CompiledRateLimit struct {
+	Limit rate.Limit
+	Burst int
+}
+
 type CompiledPolicies struct {
-	Headers []CompiledHeaders
+	Headers    []CompiledHeaders
+	RateLimits []CompiledRateLimit
 }

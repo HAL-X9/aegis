@@ -46,6 +46,12 @@ func Routes(serviceIDs map[string]snapshot.ServiceID, routes []ir.Route, policie
 			return nil, fmt.Errorf("route %q: compile headers predicate: %w", route.Name, err)
 		}
 
+		// Validate that every policy referenced by the route is defined
+		// somewhere — either as a headers policy or a rate-limit policy.
+		if err = validatePolicyRefsExist(route.Policies, policies); err != nil {
+			return nil, fmt.Errorf("route %q: %w", route.Name, err)
+		}
+
 		// Compile route policy references into route-local executable plans.
 		// The dataplane reads CompiledRoute.Headers directly and never resolves
 		// policy names or IDs on the request path.
@@ -130,6 +136,26 @@ func headersPredicate(headers map[string][]string) ([]snapshot.HeaderPredicate, 
 	return predicates, nil
 }
 
+func validatePolicyRefsExist(refs []ir.PolicyRef, policies *ir.Policies) error {
+	if len(refs) == 0 {
+		return nil
+	}
+	if policies == nil {
+		return fmt.Errorf("policy references require normalized policies")
+	}
+
+	for _, ref := range refs {
+		_, isHeaders := policies.Headers[ref.Name]
+		_, isRateLimit := policies.RateLimits[ref.Name]
+
+		if !isHeaders && !isRateLimit {
+			return fmt.Errorf("references unknown policy %q", ref.Name)
+		}
+	}
+
+	return nil
+}
+
 func compileRoutePolicyHeaders(
 	refs []ir.PolicyRef,
 	policies *ir.Policies,
@@ -155,7 +181,7 @@ func compileRoutePolicyHeaders(
 	for _, ref := range refs {
 		policy, ok := policies.Headers[ref.Name]
 		if !ok {
-			return snapshot.CompiledHeaders{}, fmt.Errorf("unknown headers policy %q", ref.Name)
+			continue
 		}
 
 		if err := mergeHeadersOps(&merged.Request, &policy.Request); err != nil {

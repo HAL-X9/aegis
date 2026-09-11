@@ -48,9 +48,9 @@ import (
 )
 
 var (
-	sinkEntries []*RouteIndexEntry
-	sinkEntry   *RouteIndexEntry
-	sinkBool    bool
+	sinkIDs   []uint32
+	sinkRoute *snapshot.CompiledRoute
+	sinkBool  bool
 )
 
 const routingTableSize = 256
@@ -281,7 +281,7 @@ func BenchmarkLookupHighFanout(b *testing.B) {
 			headerNone,
 		)
 
-		nodes, maxChildren, avgChildren := trieStats(engine.trie.root)
+		nodes, maxChildren, avgChildren := flatTrieStats(engine.trie)
 
 		b.Logf(
 			"routes=%d nodes=%d maxChildren=%d avgChildren=%.2f",
@@ -295,13 +295,13 @@ func BenchmarkLookupHighFanout(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			var out []*RouteIndexEntry
+			var out []uint32
 
 			for i := 0; i < b.N; i++ {
 				out = engine.Lookup(path)
 			}
 
-			sinkEntries = out
+			sinkIDs = out
 		})
 	}
 }
@@ -318,7 +318,7 @@ func BenchmarkLookupDeep(b *testing.B) {
 	} {
 		engine, path := buildDeepBenchEngine(b, size)
 
-		nodes, maxChildren, avgChildren := trieStats(engine.trie.root)
+		nodes, maxChildren, avgChildren := flatTrieStats(engine.trie)
 
 		b.Logf(
 			"routes=%d nodes=%d maxChildren=%d avgChildren=%.2f",
@@ -332,13 +332,13 @@ func BenchmarkLookupDeep(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			var out []*RouteIndexEntry
+			var out []uint32
 
 			for i := 0; i < b.N; i++ {
 				out = engine.Lookup(path)
 			}
 
-			sinkEntries = out
+			sinkIDs = out
 		})
 	}
 }
@@ -428,7 +428,7 @@ func BenchmarkLookupMixed(b *testing.B) {
 	} {
 		engine, paths := buildMixedBenchEngine(b, groups)
 
-		nodes, maxChildren, avgChildren := trieStats(engine.trie.root)
+		nodes, maxChildren, avgChildren := flatTrieStats(engine.trie)
 
 		b.Logf(
 			"groups=%d routes=%d nodes=%d maxChildren=%d avgChildren=%.2f",
@@ -443,46 +443,52 @@ func BenchmarkLookupMixed(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			var out []*RouteIndexEntry
+			var out []uint32
 
 			for i := 0; i < b.N; i++ {
 				out = engine.Lookup(paths[i%len(paths)])
 			}
 
-			sinkEntries = out
+			sinkIDs = out
 		})
 	}
 }
 
-func trieStats(root *RadixNode) (
+// flatTrieStats walks the flattened, pointer-free arena starting at the
+// root (node index 0) and reports the same shape statistics the old
+// RadixNode-walking trieStats did, but over FlatNode.FirstChild/ChildCount
+// ranges instead of a []*RadixNode slice. Only static children are counted,
+// matching the original's behavior (param/wildcard edges were not
+// included in its child count either).
+func flatTrieStats(t *FlatTrie) (
 	nodes int,
 	maxChildren int,
 	avgChildren float64,
 ) {
-	if root == nil {
+	if t == nil || len(t.nodes) == 0 {
 		return 0, 0, 0
 	}
 
 	totalChildren := 0
 
-	var walk func(*RadixNode)
-
-	walk = func(node *RadixNode) {
+	var walk func(nodeID uint32)
+	walk = func(nodeID uint32) {
 		nodes++
 
-		children := len(node.children)
+		node := &t.nodes[nodeID]
+		children := int(node.ChildCount)
 		totalChildren += children
 
 		if children > maxChildren {
 			maxChildren = children
 		}
 
-		for _, child := range node.children {
-			walk(child)
+		for i := uint32(0); i < uint32(node.ChildCount); i++ {
+			walk(node.FirstChild + i)
 		}
 	}
 
-	walk(root)
+	walk(0)
 
 	avgChildren = float64(totalChildren) / float64(nodes)
 
@@ -512,7 +518,7 @@ func BenchmarkMethodAdmission(b *testing.B) {
 			headerNone,
 		)
 
-		entry := engine.Lookup(path)[0]
+		route := engine.Route(engine.Lookup(path)[0])
 
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()
@@ -522,7 +528,7 @@ func BenchmarkMethodAdmission(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				method := benchMethods[i%len(benchMethods)]
-				ok = entry.Route.Match.Methods&requestMethodBit(method) != 0
+				ok = route.Match.Methods&requestMethodBit(method) != 0
 			}
 
 			sinkBool = ok
@@ -557,8 +563,8 @@ func BenchmarkHeadersMatch(b *testing.B) {
 			tc.mode,
 		)
 
-		entry := engine.Lookup(path)[0]
-		preds := entry.Route.Match.Headers
+		route := engine.Route(engine.Lookup(path)[0])
+		preds := route.Match.Headers
 
 		reqHeaders := make([]http.Header, len(benchHeaderValues))
 
@@ -591,25 +597,27 @@ func matchRequest(
 	method string,
 	path string,
 	headers http.Header,
-) *RouteIndexEntry {
-	candidates := engine.Lookup(path)
+) *snapshot.CompiledRoute {
+	candidateIDs := engine.Lookup(path)
 
-	if len(candidates) == 0 {
+	if len(candidateIDs) == 0 {
 		return nil
 	}
 
 	methodBit := requestMethodBit(method)
 
-	for _, candidate := range candidates {
-		if candidate.Route.Match.Methods&methodBit == 0 {
+	for _, id := range candidateIDs {
+		route := engine.Route(id)
+
+		if route.Match.Methods&methodBit == 0 {
 			continue
 		}
 
-		if !HeadersMatch(candidate.Route.Match.Headers, headers) {
+		if !HeadersMatch(route.Match.Headers, headers) {
 			continue
 		}
 
-		return candidate
+		return route
 	}
 
 	return nil
@@ -676,7 +684,7 @@ func BenchmarkRequestMatch(b *testing.B) {
 				b.ReportAllocs()
 				b.ResetTimer()
 
-				var matched *RouteIndexEntry
+				var matched *snapshot.CompiledRoute
 
 				for i := 0; i < b.N; i++ {
 					headers := reqHeaders[i%len(reqHeaders)]
@@ -693,9 +701,9 @@ func BenchmarkRequestMatch(b *testing.B) {
 					b.Fatal("expected a route match")
 				}
 
-				// Do not create []*RouteIndexEntry here.
+				// Do not create a new slice here.
 				// The benchmark must not introduce an artificial allocation.
-				sinkEntry = matched
+				sinkRoute = matched
 			})
 		}
 	}

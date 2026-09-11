@@ -34,6 +34,8 @@ services:
     command: go run server.go
     environment:
       MOCK_ADDR: ":8082"
+    ports:
+      - "8082:8082"
     volumes:
       - ./mock:/srv:ro
     restart: on-failure

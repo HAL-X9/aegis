@@ -1,12 +1,13 @@
 package router
 
-// BuildRadixTrie constructs a radix path index from compiled route candidates.
-func BuildRadixTrie(routes []*RouteIndexEntry) *RadixTrie {
+import "github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+
+// BuildRadixTrie constructs a build-time radix path index from compiled
+// routes. This is a control-plane operation — not part of the request path.
+func BuildRadixTrie(routes []snapshot.CompiledRoute) *RadixTrie {
 	trie := &RadixTrie{}
-
-	for _, route := range routes {
-		trie.Insert(route.Route.Match.PathPrefix, route)
+	for i := range routes {
+		trie.Insert(routes[i].Match.PathPrefix, uint32(i))
 	}
-
 	return trie
 }

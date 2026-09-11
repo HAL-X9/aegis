@@ -61,8 +61,8 @@ func TestPolicy_singlePolicyRequestSet(t *testing.T) {
 	if op.HeaderID != snapshot.HeaderContentType {
 		t.Errorf("HeaderID = %v, want %v", op.HeaderID, snapshot.HeaderContentType)
 	}
-	if got := string(plan.Values[op.ValueOffset : op.ValueOffset+uint32(op.ValueLength)]); got != "application/json" {
-		t.Errorf("packed value = %q, want %q", got, "application/json")
+	if op.Value != "application/json" {
+		t.Errorf("Value = %q, want %q", op.Value, "application/json")
 	}
 }
 
@@ -91,8 +91,8 @@ func TestPolicy_singlePolicyResponseAdd(t *testing.T) {
 	if op.HeaderID != snapshot.HeaderXContentTypeOptions {
 		t.Errorf("HeaderID = %v, want %v", op.HeaderID, snapshot.HeaderXContentTypeOptions)
 	}
-	if got := string(plan.Values[op.ValueOffset : op.ValueOffset+uint32(op.ValueLength)]); got != "nosniff" {
-		t.Errorf("packed value = %q, want %q", got, "nosniff")
+	if op.Value != "nosniff" {
+		t.Errorf("Value = %q, want %q", op.Value, "nosniff")
 	}
 }
 
@@ -121,8 +121,8 @@ func TestPolicy_removeOpNoValue(t *testing.T) {
 	if op.HeaderID != snapshot.HeaderServer {
 		t.Errorf("HeaderID = %v, want %v", op.HeaderID, snapshot.HeaderServer)
 	}
-	if op.ValueLength != 0 {
-		t.Errorf("remove op should have zero ValueLength, got %d", op.ValueLength)
+	if op.Value != "" {
+		t.Errorf("remove op should have empty Value, got %q", op.Value)
 	}
 }
 
@@ -225,49 +225,10 @@ func TestResolveHeaderID_unknownReturnsHeaderUnknownAndError(t *testing.T) {
 	}
 }
 
-// ──────────────────── headerValueBuilder ──────────────────────────────────
-
-func TestHeaderValueBuilder_singleAppend(t *testing.T) {
-	b := newHeaderValueBuilder(64)
-
-	offset, length := b.Append("hello")
-
-	if offset != 0 {
-		t.Errorf("offset = %d, want 0", offset)
-	}
-	if length != 5 {
-		t.Errorf("length = %d, want 5", length)
-	}
-	if string(b.buf) != "hello" {
-		t.Errorf("buf = %q, want %q", b.buf, "hello")
-	}
-}
-
-func TestHeaderValueBuilder_multipleAppendsAccumulate(t *testing.T) {
-	b := newHeaderValueBuilder(64)
-
-	off0, len0 := b.Append("foo")    // [0:3]
-	off1, len1 := b.Append("barbaz") // [3:9]
-	off2, len2 := b.Append("")       // [9:9]
-
-	if off0 != 0 || len0 != 3 {
-		t.Errorf("first append: offset=%d length=%d, want 0/3", off0, len0)
-	}
-	if off1 != 3 || len1 != 6 {
-		t.Errorf("second append: offset=%d length=%d, want 3/6", off1, len1)
-	}
-	if off2 != 9 || len2 != 0 {
-		t.Errorf("third append (empty): offset=%d length=%d, want 9/0", off2, len2)
-	}
-	if string(b.buf) != "foobarbaz" {
-		t.Errorf("accumulated buf = %q, want %q", string(b.buf), "foobarbaz")
-	}
-}
-
 // ──────────────────── compileHeaderOps ────────────────────────────────────
 
 func TestCompileHeaderOps_nilReturnsNil(t *testing.T) {
-	ops, err := compileHeaderOps(nil, newHeaderValueBuilder(0))
+	ops, err := compileHeaderOps(nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -277,7 +238,7 @@ func TestCompileHeaderOps_nilReturnsNil(t *testing.T) {
 }
 
 func TestCompileHeaderOps_emptyReturnsNil(t *testing.T) {
-	ops, err := compileHeaderOps(&ir.HeadersOps{}, newHeaderValueBuilder(0))
+	ops, err := compileHeaderOps(&ir.HeadersOps{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -289,7 +250,7 @@ func TestCompileHeaderOps_emptyReturnsNil(t *testing.T) {
 func TestCompileHeaderOps_removeOnly(t *testing.T) {
 	ops, err := compileHeaderOps(&ir.HeadersOps{
 		Remove: []string{"Server"},
-	}, newHeaderValueBuilder(0))
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -304,11 +265,10 @@ func TestCompileHeaderOps_removeOnly(t *testing.T) {
 	}
 }
 
-func TestCompileHeaderOps_setPacksValue(t *testing.T) {
-	b := newHeaderValueBuilder(32)
+func TestCompileHeaderOps_setCarriesValue(t *testing.T) {
 	ops, err := compileHeaderOps(&ir.HeadersOps{
 		Set: map[string]string{"Content-Type": "text/plain"},
-	}, b)
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -322,16 +282,15 @@ func TestCompileHeaderOps_setPacksValue(t *testing.T) {
 	if op.HeaderID != snapshot.HeaderContentType {
 		t.Errorf("HeaderID = %v, want %v", op.HeaderID, snapshot.HeaderContentType)
 	}
-	if got := string(b.buf[op.ValueOffset : op.ValueOffset+uint32(op.ValueLength)]); got != "text/plain" {
-		t.Errorf("packed value = %q, want %q", got, "text/plain")
+	if op.Value != "text/plain" {
+		t.Errorf("Value = %q, want %q", op.Value, "text/plain")
 	}
 }
 
-func TestCompileHeaderOps_addPacksValue(t *testing.T) {
-	b := newHeaderValueBuilder(32)
+func TestCompileHeaderOps_addCarriesValue(t *testing.T) {
 	ops, err := compileHeaderOps(&ir.HeadersOps{
 		Add: map[string]string{"X-Frame-Options": "DENY"},
-	}, b)
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -345,8 +304,8 @@ func TestCompileHeaderOps_addPacksValue(t *testing.T) {
 	if op.HeaderID != snapshot.HeaderXFrameOptions {
 		t.Errorf("HeaderID = %v, want %v", op.HeaderID, snapshot.HeaderXFrameOptions)
 	}
-	if got := string(b.buf[op.ValueOffset : op.ValueOffset+uint32(op.ValueLength)]); got != "DENY" {
-		t.Errorf("packed value = %q, want %q", got, "DENY")
+	if op.Value != "DENY" {
+		t.Errorf("Value = %q, want %q", op.Value, "DENY")
 	}
 }
 
@@ -356,7 +315,7 @@ func TestCompileHeaderOps_executionOrder(t *testing.T) {
 		Remove: []string{"Server"},
 		Set:    map[string]string{"Content-Type": "application/json"},
 		Add:    map[string]string{"X-Frame-Options": "DENY"},
-	}, newHeaderValueBuilder(64))
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -377,7 +336,7 @@ func TestCompileHeaderOps_executionOrder(t *testing.T) {
 func TestCompileHeaderOps_unknownHeaderInRemove(t *testing.T) {
 	_, err := compileHeaderOps(&ir.HeadersOps{
 		Remove: []string{"X-Not-Supported"},
-	}, newHeaderValueBuilder(0))
+	})
 	if err == nil {
 		t.Fatal("expected error for unsupported header in remove")
 	}
@@ -389,7 +348,7 @@ func TestCompileHeaderOps_unknownHeaderInRemove(t *testing.T) {
 func TestCompileHeaderOps_unknownHeaderInSet(t *testing.T) {
 	_, err := compileHeaderOps(&ir.HeadersOps{
 		Set: map[string]string{"X-Not-Supported": "value"},
-	}, newHeaderValueBuilder(0))
+	})
 	if err == nil {
 		t.Fatal("expected error for unsupported header in set")
 	}
@@ -398,7 +357,7 @@ func TestCompileHeaderOps_unknownHeaderInSet(t *testing.T) {
 func TestCompileHeaderOps_unknownHeaderInAdd(t *testing.T) {
 	_, err := compileHeaderOps(&ir.HeadersOps{
 		Add: map[string]string{"X-Not-Supported": "value"},
-	}, newHeaderValueBuilder(0))
+	})
 	if err == nil {
 		t.Fatal("expected error for unsupported header in add")
 	}
@@ -437,40 +396,4 @@ func TestSortedStringMapKeys(t *testing.T) {
 			t.Errorf("got %v, want %v", got, want)
 		}
 	})
-}
-
-// ──────────────────── estimateStringsSize ─────────────────────────────────
-
-func TestEstimateStringsSize_nil(t *testing.T) {
-	if got := estimateStringsSize(nil); got != 0 {
-		t.Errorf("got %d, want 0", got)
-	}
-}
-
-func TestEstimateStringsSize_empty(t *testing.T) {
-	if got := estimateStringsSize(&ir.Policies{Headers: map[string]ir.Headers{}}); got != 0 {
-		t.Errorf("got %d, want 0", got)
-	}
-}
-
-func TestEstimateStringsSize_countsSetAndAddValuesOnly(t *testing.T) {
-	policies := &ir.Policies{
-		Headers: map[string]ir.Headers{
-			"p": {
-				Request: ir.HeadersOps{
-					Set:    map[string]string{"Host": "abc"},          // 3
-					Add:    map[string]string{"Content-Type": "json"}, // 4
-					Remove: []string{"Server"},                        // not counted
-				},
-				Response: ir.HeadersOps{
-					Set: map[string]string{"X-Frame-Options": "DE"}, // 2
-					Add: map[string]string{"X-XSS-Protection": "1"}, // 1
-				},
-			},
-		},
-	}
-	// 3 + 4 + 2 + 1 = 10
-	if got := estimateStringsSize(policies); got != 10 {
-		t.Errorf("got %d, want 10", got)
-	}
 }

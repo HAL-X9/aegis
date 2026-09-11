@@ -16,9 +16,6 @@ func Policies(policies *ir.Policies) (*snapshot.CompiledPolicies, error) {
 		return nil, fmt.Errorf("compile policies configuration: config is nil")
 	}
 
-	estimatedSize := estimateStringsSize(policies)
-	builder := newHeaderValueBuilder(estimatedSize)
-
 	policyNames := make([]string, 0, len(policies.Headers))
 	for name := range policies.Headers {
 		policyNames = append(policyNames, name)
@@ -27,7 +24,9 @@ func Policies(policies *ir.Policies) (*snapshot.CompiledPolicies, error) {
 
 	compiledHeaders := make([]snapshot.CompiledHeaders, 0, len(policyNames))
 	for _, name := range policyNames {
-		compiled, err := compileRouteHeaders(new(policies.Headers[name]), builder)
+		headers := policies.Headers[name]
+
+		compiled, err := compileRouteHeaders(&headers)
 		if err != nil {
 			return nil, fmt.Errorf("compile headers policy %q: %w", name, err)
 		}
@@ -82,64 +81,32 @@ func resolveHeaderID(name string) (snapshot.HeaderID, error) {
 	}
 }
 
-// headerValueBuilder accumulates all static header values into a single
-// continuous byte slice to eliminate runtime memory allocations.
-type headerValueBuilder struct {
-	buf []byte
-}
-
-func newHeaderValueBuilder(estimatedSize int) *headerValueBuilder {
-	return &headerValueBuilder{
-		buf: make([]byte, 0, estimatedSize),
-	}
-}
-
-func (b *headerValueBuilder) Append(value string) (offset uint32, length uint16) {
-	offset = uint32(len(b.buf))
-	b.buf = append(b.buf, value...)
-	length = uint16(len(value))
-	return offset, length
-}
-
 // compileRouteHeaders compiles request and response header mutation rules
-// into a unified snapshot format.
-func compileRouteHeaders(
-	headers *ir.Headers,
-	builder *headerValueBuilder,
-) (snapshot.CompiledHeaders, error) {
-
+// into a unified snapshot format. Header values are copied verbatim from
+// the IR into the compiled instruction — there is no shared byte blob to
+// build, so this takes no builder argument.
+func compileRouteHeaders(headers *ir.Headers) (snapshot.CompiledHeaders, error) {
 	if headers == nil {
 		return snapshot.CompiledHeaders{}, nil
 	}
 
-	requestOps, err := compileHeaderOps(&headers.Request, builder)
+	requestOps, err := compileHeaderOps(&headers.Request)
 	if err != nil {
 		return snapshot.CompiledHeaders{}, fmt.Errorf("compile request header operations: %w", err)
 	}
-
-	responseOps, err := compileHeaderOps(&headers.Response, builder)
+	responseOps, err := compileHeaderOps(&headers.Response)
 	if err != nil {
 		return snapshot.CompiledHeaders{}, fmt.Errorf("compile response header operations: %w", err)
 	}
 
 	return snapshot.CompiledHeaders{
-		Request: snapshot.CompiledHeadersPlan{
-			Ops:    requestOps,
-			Values: builder.buf,
-		},
-		Response: snapshot.CompiledHeadersPlan{
-			Ops:    responseOps,
-			Values: builder.buf,
-		},
+		Request:  snapshot.CompiledHeadersPlan{Ops: requestOps},
+		Response: snapshot.CompiledHeadersPlan{Ops: responseOps},
 	}, nil
 }
 
 // compileHeaderOps transforms normalized operations into compact instructions.
-func compileHeaderOps(
-	ops *ir.HeadersOps,
-	builder *headerValueBuilder,
-) ([]snapshot.HeaderInstruction, error) {
-
+func compileHeaderOps(ops *ir.HeadersOps) ([]snapshot.HeaderInstruction, error) {
 	if ops == nil {
 		return nil, nil
 	}
@@ -156,44 +123,33 @@ func compileHeaderOps(
 		if err != nil {
 			return nil, err
 		}
-
 		instructions = append(instructions, snapshot.HeaderInstruction{
 			HeaderID: headerID,
 			Op:       snapshot.HeaderOpRemove,
 		})
 	}
 
-	setNames := sortedStringMapKeys(ops.Set)
-	for _, name := range setNames {
+	for _, name := range sortedStringMapKeys(ops.Set) {
 		headerID, err := resolveHeaderID(name)
 		if err != nil {
 			return nil, err
 		}
-
-		offset, length := builder.Append(ops.Set[name])
-
 		instructions = append(instructions, snapshot.HeaderInstruction{
-			HeaderID:    headerID,
-			Op:          snapshot.HeaderOpSet,
-			ValueOffset: offset,
-			ValueLength: length,
+			HeaderID: headerID,
+			Op:       snapshot.HeaderOpSet,
+			Value:    ops.Set[name],
 		})
 	}
 
-	addNames := sortedStringMapKeys(ops.Add)
-	for _, name := range addNames {
+	for _, name := range sortedStringMapKeys(ops.Add) {
 		headerID, err := resolveHeaderID(name)
 		if err != nil {
 			return nil, err
 		}
-
-		offset, length := builder.Append(ops.Add[name])
-
 		instructions = append(instructions, snapshot.HeaderInstruction{
-			HeaderID:    headerID,
-			Op:          snapshot.HeaderOpAddIfAbsent,
-			ValueOffset: offset,
-			ValueLength: length,
+			HeaderID: headerID,
+			Op:       snapshot.HeaderOpAddIfAbsent,
+			Value:    ops.Add[name],
 		})
 	}
 
@@ -211,31 +167,6 @@ func sortedStringMapKeys(values map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-// estimateStringsSize calculates total bytes for header values.
-func estimateStringsSize(policies *ir.Policies) int {
-	if policies == nil {
-		return 0
-	}
-
-	var total int
-	for _, h := range policies.Headers {
-		for _, v := range h.Request.Set {
-			total += len(v)
-		}
-		for _, v := range h.Request.Add {
-			total += len(v)
-		}
-		for _, v := range h.Response.Set {
-			total += len(v)
-		}
-		for _, v := range h.Response.Add {
-			total += len(v)
-		}
-	}
-
-	return total
 }
 
 func sortedRateLimitNames(policies *ir.Policies) []string {

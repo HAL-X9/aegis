@@ -23,8 +23,6 @@ func Routes(serviceIDs map[string]snapshot.ServiceID, routes []ir.Route, policie
 	compiledRoutes := make([]snapshot.CompiledRoute, 0, len(routes))
 
 	for _, route := range routes {
-		// Path prefix is taken as-is, assuming it has already been normalized
-		// in the validation/normalization representation of the control plane.
 		pathPrefix := route.Match.PathPrefix
 
 		serviceID, ok := serviceIDs[route.Service]
@@ -32,36 +30,25 @@ func Routes(serviceIDs map[string]snapshot.ServiceID, routes []ir.Route, policie
 			return nil, fmt.Errorf("route %q references unknown service %q", route.Name, route.Service)
 		}
 
-		// Convert human-readable HTTP methods into a bitmask representation
-		// for efficient O(1) matching in dataplane hot path.
 		methodMask, err := methodmask.BuildMethodMask(route.Match.Methods)
 		if err != nil {
 			return nil, fmt.Errorf("route %q: compile method mask: %w", route.Name, err)
 		}
 
-		// Compile header match constraints once during control-plane compilation
-		// so request-path evaluation remains deterministic and allocation-light.
 		headerPredicates, err := headersPredicate(route.Match.Headers)
 		if err != nil {
 			return nil, fmt.Errorf("route %q: compile headers predicate: %w", route.Name, err)
 		}
 
-		// Validate that every policy referenced by the route is defined
-		// somewhere — either as a headers policy or a rate-limit policy.
 		if err = validatePolicyRefsExist(route.Policies, policies); err != nil {
 			return nil, fmt.Errorf("route %q: %w", route.Name, err)
 		}
 
-		// Compile route policy references into route-local executable plans.
-		// The dataplane reads CompiledRoute.Headers directly and never resolves
-		// policy names or IDs on the request path.
 		headers, err := compileRoutePolicyHeaders(route.Policies, policies)
 		if err != nil {
 			return nil, fmt.Errorf("route %q: compile policy headers: %w", route.Name, err)
 		}
 
-		// Resolve the rate-limit policy referenced by the route, if any, into its
-		// stable snapshot index for O(1) lookup in the dataplane hot path.
 		rateLimitID, err := resolveRouteRateLimitID(route.Name, route.Policies, policies)
 		if err != nil {
 			return nil, fmt.Errorf("route %q: compile policy rate limit: %w", route.Name, err)
@@ -118,11 +105,9 @@ func headersPredicate(headers map[string][]string) ([]snapshot.HeaderPredicate, 
 			if value == "" {
 				return nil, fmt.Errorf("header %q contains empty allowed value", name)
 			}
-
 			if _, ok := uniq[value]; ok {
 				continue
 			}
-
 			uniq[value] = struct{}{}
 			clean = append(clean, value)
 		}
@@ -156,6 +141,9 @@ func validatePolicyRefsExist(refs []ir.PolicyRef, policies *ir.Policies) error {
 	return nil
 }
 
+// compileRoutePolicyHeaders merges every headers-policy a route references
+// into one IR headers set, then compiles it directly — no shared byte blob
+// builder is needed since HeaderInstruction now carries its Value inline.
 func compileRoutePolicyHeaders(
 	refs []ir.PolicyRef,
 	policies *ir.Policies,
@@ -192,8 +180,7 @@ func compileRoutePolicyHeaders(
 		}
 	}
 
-	builder := newHeaderValueBuilder(estimateHeadersSize(&merged))
-	return compileRouteHeaders(&merged, builder)
+	return compileRouteHeaders(&merged)
 }
 
 func mergeHeadersOps(dst *ir.HeadersOps, src *ir.HeadersOps) error {
@@ -239,27 +226,6 @@ func headersOpContains(ops ir.HeadersOps, name string) bool {
 		return true
 	}
 	return slices.Contains(ops.Remove, name)
-}
-
-func estimateHeadersSize(headers *ir.Headers) int {
-	if headers == nil {
-		return 0
-	}
-
-	var total int
-	for _, value := range headers.Request.Set {
-		total += len(value)
-	}
-	for _, value := range headers.Request.Add {
-		total += len(value)
-	}
-	for _, value := range headers.Response.Set {
-		total += len(value)
-	}
-	for _, value := range headers.Response.Add {
-		total += len(value)
-	}
-	return total
 }
 
 func resolveRouteRateLimitID(routeName string, refs []ir.PolicyRef, policies *ir.Policies) (int32, error) {

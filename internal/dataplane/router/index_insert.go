@@ -1,32 +1,34 @@
 package router
 
-import (
-	"net/url"
+// RadixNode is a build-time radix trie node. It exists only while the
+// control plane constructs the routing table; the request hot path never
+// touches it — see FlatTrie in flat.go.
+type RadixNode struct {
+	prefix string
 
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
-)
+	// Static edges. Children have unique first bytes.
+	children []*RadixNode
 
-// RadixTrie is a radix-based path index for compiled routes.
+	paramChild    *RadixNode
+	wildcardChild *RadixNode
+
+	// candidates holds indices into snapshot.CompiledConfig.Routes, not
+	// pointers — there is nothing here for Flatten to translate.
+	candidates []uint32
+}
+
+// RadixTrie is a build-time radix path index for compiled routes.
 type RadixTrie struct {
 	root *RadixNode
 }
 
-// RouteIndexEntry groups route candidates and their method mask.
-type RouteIndexEntry struct {
-	Route *snapshot.CompiledRoute
-
-	// UpstreamURL is parsed once during route compilation.
-	// It must be treated as immutable after the route index is built.
-	UpstreamURL *url.URL
-}
-
-// Insert registers a route entry under the provided normalized path.
+// Insert registers routeID under the provided normalized path.
 //
 // Insert is a setup-time operation (route table construction), so it
 // favors correctness and real radix compression over avoiding
-// allocations. Lookup, which runs on the request hot path, does not
-// allocate at all — see lookup.go.
-func (t *RadixTrie) Insert(path string, entry *RouteIndexEntry) {
+// allocations. The request hot path runs entirely against the flattened
+// arena produced by Flatten — see flat.go.
+func (t *RadixTrie) Insert(path string, routeID uint32) {
 	if t.root == nil {
 		t.root = &RadixNode{}
 	}
@@ -62,17 +64,11 @@ func (t *RadixTrie) Insert(path string, entry *RouteIndexEntry) {
 		}
 	}
 
-	node.candidates = append(node.candidates, entry)
+	node.candidates = append(node.candidates, routeID)
 }
 
-// insertStaticSegment inserts one static path segment under node,
-// creating or splitting compressed edges as needed, and returns the node
-// that represents the end of that segment (i.e. the node the next path
-// segment, or the route's candidates, should be attached to).
-//
-// This is the mirror image of lookupStaticSegment in lookup.go: both
-// walk node.children byte-range by byte-range until segment is fully
-// consumed. Keeping the two in lockstep is what makes compression safe.
+// insertStaticSegment / splitChild / findChildByFirstByte / nextSegment /
+// commonPrefixLen — unchanged from your original index_insert.go.
 func insertStaticSegment(node *RadixNode, segment string) *RadixNode {
 	for len(segment) > 0 {
 		idx, child := findChildByFirstByte(node, segment[0])
@@ -85,18 +81,11 @@ func insertStaticSegment(node *RadixNode, segment string) *RadixNode {
 		common := commonPrefixLen(child.prefix, segment)
 
 		if common == len(child.prefix) {
-			// The existing edge is fully consumed (possibly with
-			// segment fully consumed too, in which case the loop
-			// simply exits on the next check). Keep walking its
-			// children with whatever remains of segment.
 			node = child
 			segment = segment[common:]
 			continue
 		}
 
-		// The existing edge only partially matches: split it at the
-		// common boundary so the old suffix and the new suffix become
-		// siblings under a shared, newly created parent.
 		split := splitChild(node, idx, child, common)
 
 		segment = segment[common:]
@@ -112,11 +101,6 @@ func insertStaticSegment(node *RadixNode, segment string) *RadixNode {
 	return node
 }
 
-// splitChild splits child's prefix at byte offset common, replacing it
-// in place under parent with a new intermediate node:
-//
-//	before:  parent -[prefix]-------------> child
-//	after:   parent -[prefix[:common]]-> split -[prefix[common:]]-> child
 func splitChild(parent *RadixNode, idx int, child *RadixNode, common int) *RadixNode {
 	split := &RadixNode{
 		prefix:   child.prefix[:common],
@@ -129,11 +113,6 @@ func splitChild(parent *RadixNode, idx int, child *RadixNode, common int) *Radix
 	return split
 }
 
-// findChildByFirstByte returns the static child edge starting with b, if
-// any. The radix invariant maintained by insertStaticSegment/splitChild
-// guarantees at most one such child exists, which is what lets Lookup do
-// a single linear scan per level with no backtracking between static
-// children.
 func findChildByFirstByte(node *RadixNode, b byte) (int, *RadixNode) {
 	for i, child := range node.children {
 		if child.prefix[0] == b {
@@ -143,8 +122,6 @@ func findChildByFirstByte(node *RadixNode, b byte) (int, *RadixNode) {
 	return -1, nil
 }
 
-// nextSegment splits off the next '/'-delimited segment from path.
-// path must be non-empty and must not start with '/'.
 func nextSegment(path string) (segment, rest string) {
 	for i, b := range path {
 		if b == '/' {

@@ -1,73 +1,65 @@
 package router
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
-)
+// lookupViaFlatten flattens trie and looks up path against the resulting
+// FlatTrie. RadixTrie itself has no Lookup method — it's a build-time-only
+// structure; the request-serving lookup logic lives entirely in FlatTrie
+// (see flat.go), so that's what these Insert tests exercise.
+func lookupViaFlatten(t *testing.T, trie *RadixTrie, path string) []uint32 {
+	t.Helper()
+	flat, err := Flatten(trie)
+	if err != nil {
+		t.Fatalf("Flatten failed: %v", err)
+	}
+	return flat.Lookup(path)
+}
 
 func TestRadixTrieInsert(t *testing.T) {
 	t.Run("insert creates root and terminal candidate", func(t *testing.T) {
 		trie := &RadixTrie{}
-		entry := &RouteIndexEntry{
-			Route: &snapshot.CompiledRoute{Name: "route-a"},
-		}
 
-		trie.Insert("/api/v1", entry)
+		trie.Insert("/api/v1", 42)
 
 		if trie.root == nil {
 			t.Fatal("root should be initialized")
 		}
 
-		got := trie.Lookup("/api/v1")
-		if len(got) != 1 || got[0] != entry {
-			t.Fatalf("lookup result = %#v", got)
+		got := lookupViaFlatten(t, trie, "/api/v1")
+		if len(got) != 1 || got[0] != 42 {
+			t.Fatalf("lookup result = %#v, want [42]", got)
 		}
 	})
 
 	t.Run("insert reuses dynamic edges for parameter and wildcard", func(t *testing.T) {
 		trie := &RadixTrie{}
 
-		param := &RouteIndexEntry{
-			Route: &snapshot.CompiledRoute{Name: "param"},
-		}
-		wild := &RouteIndexEntry{
-			Route: &snapshot.CompiledRoute{Name: "wild"},
-		}
+		trie.Insert("/users/:id", 1)
+		trie.Insert("/assets/*path", 2)
 
-		trie.Insert("/users/:id", param)
-		trie.Insert("/assets/*path", wild)
-
-		if got := trie.Lookup("/users/42"); len(got) != 1 || got[0] != param {
-			t.Fatalf("param lookup = %#v", got)
+		if got := lookupViaFlatten(t, trie, "/users/42"); len(got) != 1 || got[0] != 1 {
+			t.Fatalf("param lookup = %#v, want [1]", got)
 		}
 
-		if got := trie.Lookup("/assets/img/logo.png"); len(got) != 1 || got[0] != wild {
-			t.Fatalf("wild lookup = %#v", got)
+		if got := lookupViaFlatten(t, trie, "/assets/img/logo.png"); len(got) != 1 || got[0] != 2 {
+			t.Fatalf("wild lookup = %#v, want [2]", got)
 		}
 	})
 
 	t.Run("insert appends candidates on same terminal node", func(t *testing.T) {
 		trie := &RadixTrie{}
 
-		first := &RouteIndexEntry{
-			Route: &snapshot.CompiledRoute{Name: "first"},
-		}
-		second := &RouteIndexEntry{
-			Route: &snapshot.CompiledRoute{Name: "second"},
-		}
+		trie.Insert("/same", 10)
+		trie.Insert("/same", 20)
 
-		trie.Insert("/same", first)
-		trie.Insert("/same", second)
-
-		got := trie.Lookup("/same")
+		got := lookupViaFlatten(t, trie, "/same")
 
 		if len(got) != 2 {
 			t.Fatalf("len = %d, want 2", len(got))
 		}
 
-		if got[0] != first || got[1] != second {
-			t.Fatalf("order mismatch: %#v", got)
+		if got[0] != 10 || got[1] != 20 {
+			t.Fatalf("order mismatch: %#v, want [10 20]", got)
 		}
 	})
 }

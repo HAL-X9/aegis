@@ -77,11 +77,10 @@ type HeaderInstruction struct {
 	HeaderID HeaderID
 	Op       HeaderOpCode
 
-	// Offset inside immutable values blob.
-	ValueOffset uint32
-
-	// Value length inside values blob.
-	ValueLength uint16
+	// Value is precomputed at compile time and never mutated afterward,
+	// so it's safe to share across every request and every snapshot swap.
+	// There is no runtime string(...) conversion left to pay for.
+	Value string
 }
 
 // CompiledHeadersPlan is a fully normalized executable plan.
@@ -106,12 +105,6 @@ type HeaderInstruction struct {
 // Runtime must never sort or resolve conflicts.
 type CompiledHeadersPlan struct {
 	Ops []HeaderInstruction
-
-	// Immutable packed values blob.
-	//
-	// HeaderOp.ValueOffset and HeaderOp.ValueLength
-	// reference slices inside this buffer.
-	Values []byte
 }
 
 // CompiledHeaders contains request/response plans.

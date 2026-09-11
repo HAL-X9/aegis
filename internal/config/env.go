@@ -1,4 +1,4 @@
-// Package loader resolves configuration file paths and reads YAML documents into typed values.
+// Package config resolves configuration file paths and reads YAML documents into typed values.
 package config
 
 const (

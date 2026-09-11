@@ -7,58 +7,67 @@ import (
 	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
 
-// Engine encapsulates compiled routing structures required at request time.
+// Engine encapsulates the compiled, pointer-free routing structures used
+// on the request hot path. Lookup, Route, and UpstreamURL never allocate.
 type Engine struct {
-	trie *RadixTrie
+	trie         *FlatTrie
+	routes       []snapshot.CompiledRoute
+	upstreamURLs []*url.URL // one entry per service, indexed by ServiceID
 }
 
-// BuildEngine prepares lookup structures from an already-compiled control-plane snapshot.
+// BuildEngine compiles a control-plane snapshot into a request-ready
+// Engine. This runs once per config reload — free to allocate, build an
+// intermediate pointer tree, sort, etc. None of it runs on the request path.
 func BuildEngine(cfg *snapshot.CompiledConfig) (*Engine, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	entries := make([]*RouteIndexEntry, 0, len(cfg.Routes))
-
-	for i := range cfg.Routes {
-		route := &cfg.Routes[i]
-
-		if int(route.Service) >= len(cfg.Services.Items) {
-			return nil, fmt.Errorf(
-				"route %q references invalid service ID %d",
-				route.Name,
-				route.Service,
-			)
-		}
-
-		service := &cfg.Services.Items[route.Service]
-
-		upstreamURL, err := url.Parse(service.Upstream)
+	upstreamURLs := make([]*url.URL, len(cfg.Services.Items))
+	for i, service := range cfg.Services.Items {
+		u, err := url.Parse(service.Upstream)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"route %q references invalid upstream %q: %w",
-				route.Name,
-				service.Upstream,
-				err,
-			)
+			return nil, fmt.Errorf("service %q: invalid upstream %q: %w", service.Name, service.Upstream, err)
 		}
-
-		entries = append(entries, &RouteIndexEntry{
-			Route:       route,
-			UpstreamURL: upstreamURL,
-		})
+		upstreamURLs[i] = u
 	}
 
-	trie := BuildRadixTrie(entries)
+	for _, route := range cfg.Routes {
+		if int(route.Service) >= len(cfg.Services.Items) {
+			return nil, fmt.Errorf("route %q references invalid service ID %d", route.Name, route.Service)
+		}
+	}
 
-	return &Engine{trie: trie}, nil
+	tree := BuildRadixTrie(cfg.Routes)
+
+	trie, err := Flatten(tree)
+	if err != nil {
+		return nil, fmt.Errorf("flatten routing trie: %w", err)
+	}
+
+	return &Engine{
+		trie:         trie,
+		routes:       cfg.Routes,
+		upstreamURLs: upstreamURLs,
+	}, nil
 }
 
-// Lookup returns route candidates that match the provided request path.
-// It returns nil when called on a nil engine or with a nil path.
-func (engine *Engine) Lookup(path string) []*RouteIndexEntry {
-	if engine == nil || path == "" {
+// Lookup returns route-ID candidates matching path. The returned slice is
+// a window into the engine's own arena — do not retain it past the
+// engine's lifetime, and do not mutate it.
+func (e *Engine) Lookup(path string) []uint32 {
+	if e == nil || path == "" {
 		return nil
 	}
-	return engine.trie.Lookup(path)
+	return e.trie.Lookup(path)
+}
+
+// Route returns the compiled route for a route ID returned by Lookup.
+func (e *Engine) Route(id uint32) *snapshot.CompiledRoute {
+	return &e.routes[id]
+}
+
+// UpstreamURL returns the parsed upstream origin for route's service.
+func (e *Engine) UpstreamURL(route *snapshot.CompiledRoute) *url.URL {
+	return e.upstreamURLs[route.Service]
 }

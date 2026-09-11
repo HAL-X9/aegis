@@ -40,8 +40,8 @@ func ExecuteMutations(h http.Header, plan *snapshot.CompiledHeadersPlan) {
 		return
 	}
 
-	for i := 0; i < len(plan.Ops); i++ {
-		op := plan.Ops[i]
+	for i := range plan.Ops {
+		op := &plan.Ops[i]
 
 		name := resolveHeaderName(op.HeaderID)
 		if name == "" {
@@ -52,12 +52,10 @@ func ExecuteMutations(h http.Header, plan *snapshot.CompiledHeadersPlan) {
 		case snapshot.HeaderOpRemove:
 			h.Del(name)
 		case snapshot.HeaderOpSet:
-			valueBytes := plan.Values[op.ValueOffset : op.ValueOffset+uint32(op.ValueLength)]
-			h.Set(name, string(valueBytes))
+			h.Set(name, op.Value)
 		case snapshot.HeaderOpAddIfAbsent:
 			if h.Get(name) == "" {
-				valueBytes := plan.Values[op.ValueOffset : op.ValueOffset+uint32(op.ValueLength)]
-				h.Set(name, string(valueBytes))
+				h.Set(name, op.Value)
 			}
 		}
 	}

@@ -1,7 +1,6 @@
 package router
 
 import (
-	"net/url"
 	"strings"
 	"testing"
 
@@ -15,7 +14,6 @@ func TestBuildEngine(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-
 		if !strings.Contains(err.Error(), "config is nil") {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -25,19 +23,14 @@ func TestBuildEngine(t *testing.T) {
 		_, err := BuildEngine(&snapshot.CompiledConfig{
 			Services: snapshot.CompiledServices{
 				Items: []snapshot.CompiledService{
-					{
-						Name:     "api",
-						Upstream: "://invalid-url",
-					},
+					{Name: "api", Upstream: "://invalid-url"},
 				},
 			},
 			Routes: []snapshot.CompiledRoute{
 				{
 					Name:    "api",
 					Service: snapshot.ServiceID(0),
-					Match: snapshot.CompiledMatch{
-						PathPrefix: "/api",
-					},
+					Match:   snapshot.CompiledMatch{PathPrefix: "/api"},
 				},
 			},
 		})
@@ -45,7 +38,6 @@ func TestBuildEngine(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-
 		if !strings.Contains(err.Error(), "invalid upstream") {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -55,71 +47,43 @@ func TestBuildEngine(t *testing.T) {
 		engine, err := BuildEngine(&snapshot.CompiledConfig{
 			Services: snapshot.CompiledServices{
 				Items: []snapshot.CompiledService{
-					{
-						Name:     "api",
-						Upstream: "http://localhost:8080",
-					},
+					{Name: "api", Upstream: "http://localhost:8080"},
 				},
 			},
 			Routes: []snapshot.CompiledRoute{
 				{
 					Name:    "api",
 					Service: snapshot.ServiceID(0),
-					Match: snapshot.CompiledMatch{
-						PathPrefix: "/api",
-					},
+					Match:   snapshot.CompiledMatch{PathPrefix: "/api"},
 				},
 			},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-
 		if engine == nil {
 			t.Fatal("expected non-nil engine")
 		}
 
-		got := engine.Lookup("/api")
-
-		if len(got) != 1 {
-			t.Fatalf("lookup result = %#v, want exactly one candidate", got)
+		ids := engine.Lookup("/api")
+		if len(ids) != 1 {
+			t.Fatalf("lookup result = %#v, want exactly one candidate", ids)
 		}
 
-		if got[0].Route.Name != "api" {
-			t.Fatalf("route name = %q, want %q", got[0].Route.Name, "api")
+		route := engine.Route(ids[0])
+		if route.Name != "api" {
+			t.Fatalf("route name = %q, want %q", route.Name, "api")
 		}
 
-		if got[0].UpstreamURL == nil {
+		upstream := engine.UpstreamURL(route)
+		if upstream == nil {
 			t.Fatal("expected non-nil upstream URL")
 		}
-
-		want, err := url.Parse("http://localhost:8080")
-		if err != nil {
-			t.Fatalf("failed to parse expected URL: %v", err)
+		if upstream.Scheme != "http" {
+			t.Fatalf("upstream scheme = %q, want %q", upstream.Scheme, "http")
 		}
-
-		if got[0].UpstreamURL.String() != want.String() {
-			t.Fatalf(
-				"upstream URL = %q, want %q",
-				got[0].UpstreamURL.String(),
-				want.String(),
-			)
-		}
-
-		if got[0].UpstreamURL.Scheme != "http" {
-			t.Fatalf(
-				"upstream scheme = %q, want %q",
-				got[0].UpstreamURL.Scheme,
-				"http",
-			)
-		}
-
-		if got[0].UpstreamURL.Host != "localhost:8080" {
-			t.Fatalf(
-				"upstream host = %q, want %q",
-				got[0].UpstreamURL.Host,
-				"localhost:8080",
-			)
+		if upstream.Host != "localhost:8080" {
+			t.Fatalf("upstream host = %q, want %q", upstream.Host, "localhost:8080")
 		}
 	})
 }
@@ -127,7 +91,6 @@ func TestBuildEngine(t *testing.T) {
 func TestEngineLookup(t *testing.T) {
 	t.Run("nil receiver returns nil", func(t *testing.T) {
 		var engine *Engine
-
 		if got := engine.Lookup("/x"); got != nil {
 			t.Fatalf("got %#v, want nil", got)
 		}
@@ -137,19 +100,14 @@ func TestEngineLookup(t *testing.T) {
 		engine, err := BuildEngine(&snapshot.CompiledConfig{
 			Services: snapshot.CompiledServices{
 				Items: []snapshot.CompiledService{
-					{
-						Name:     "x",
-						Upstream: "http://h:1",
-					},
+					{Name: "x", Upstream: "http://h:1"},
 				},
 			},
 			Routes: []snapshot.CompiledRoute{
 				{
 					Name:    "x",
 					Service: snapshot.ServiceID(0),
-					Match: snapshot.CompiledMatch{
-						PathPrefix: "/x",
-					},
+					Match:   snapshot.CompiledMatch{PathPrefix: "/x"},
 				},
 			},
 		})

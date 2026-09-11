@@ -3,9 +3,11 @@ package proxy
 import (
 	"io"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
+	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/request"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
@@ -33,6 +35,23 @@ var copyBufferPool = sync.Pool{
 		buf := make([]byte, 32*1024)
 		return &buf
 	},
+}
+
+// upstreamRequest bundles the outbound *http.Request and its *url.URL in a
+// single heap allocation. RoundTripper requires req.URL to be a pointer, so
+// without this trick the two would land in two separate mallocgc calls.
+//
+// Pooling is safe here because the standard http.Transport never retains a
+// *Request or its URL past the RoundTrip call that owns it. If transport is
+// ever swapped for a custom RoundTripper that queues requests for background
+// retry, that contract must be re-verified before reusing this pool.
+type upstreamRequest struct {
+	req http.Request
+	url url.URL
+}
+
+var upstreamRequestPool = sync.Pool{
+	New: func() any { return new(upstreamRequest) },
 }
 
 // NewExecutor creates a new Executor instance.
@@ -70,9 +89,8 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve all route candidates matching the incoming request path.
-	candidates := executor.engine.Lookup(r.URL.Path)
-	if len(candidates) == 0 {
+	candidateIDs := executor.engine.Lookup(r.URL.Path)
+	if len(candidateIDs) == 0 {
 		http.NotFound(w, r)
 		return
 	}
@@ -86,82 +104,76 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var methodMatch bool
-	var matchedEntry *router.RouteIndexEntry
+	var matchedRoute *snapshot.CompiledRoute
 
-	// Select the first route candidate that satisfies both method and header
-	// predicates. Build the upstream target URL from the matched route upstream
-	// origin and the escaped request path.
-	for _, candidate := range candidates {
-		if candidate.Route.Match.Methods&methodBit != 0 {
+	for _, id := range candidateIDs {
+		route := executor.engine.Route(id)
+		if route.Match.Methods&methodBit != 0 {
 			methodMatch = true
 
-			if router.HeadersMatch(candidate.Route.Match.Headers, r.Header) {
-				matchedEntry = candidate
+			if router.HeadersMatch(route.Match.Headers, r.Header) {
+				matchedRoute = route
 				break
 			}
 		}
 	}
 
-	if matchedEntry == nil {
+	if matchedRoute == nil {
 		if !methodMatch {
 			http.Error(w, "method not allowed for matched route", http.StatusMethodNotAllowed)
 			return
 		}
-
 		http.NotFound(w, r)
 		return
 	}
 
-	// Enforce the matched route's rate-limit policy before doing any
-	// further work — this is the cheapest possible rejection point,
-	// before an upstream connection is ever attempted.
-	if !executor.rateLimiters.Allow(matchedEntry.Route) {
+	if !executor.rateLimiters.Allow(matchedRoute) {
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
 	}
 
-	upstreamURL := *matchedEntry.UpstreamURL
+	combo := upstreamRequestPool.Get().(*upstreamRequest)
+	defer upstreamRequestPool.Put(combo)
 
-	upstreamURL.Path = r.URL.Path
-	upstreamURL.RawPath = r.URL.RawPath
-	upstreamURL.RawQuery = r.URL.RawQuery
+	combo.url = *executor.engine.UpstreamURL(matchedRoute)
+	combo.url.Path = r.URL.Path
+	combo.url.RawPath = r.URL.RawPath
+	combo.url.RawQuery = r.URL.RawQuery
 
-	req := &http.Request{
-		Method:        r.Method,
-		URL:           &upstreamURL,
-		Header:        r.Header,
-		Body:          r.Body,
-		GetBody:       nil,
-		ContentLength: r.ContentLength,
-	}
+	// A full struct copy of *r — not field-by-field construction — is what
+	// carries over r's unexported ctx (deadline, cancellation, trace info)
+	// without an extra WithContext allocation: WithContext just does this
+	// same copy internally and hands back a *new* heap object, so doing it
+	// ourselves into combo.req is strictly one allocation cheaper.
+	combo.req = *r
+	combo.req.URL = &combo.url
 
-	req = req.WithContext(r.Context())
+	// RequestURI is populated by net/http for incoming server requests and
+	// must be empty on outgoing client requests — Transport.RoundTrip
+	// rejects it otherwise ("Request.RequestURI can't be set in client
+	// requests"). Everything else copied from *r (Header, Body,
+	// ContentLength, TLS, etc.) is either correct as-is for a proxied
+	// request or harmless/ignored by the client Transport.
+	combo.req.RequestURI = ""
 
-	policy.ExecuteMutations(
-		req.Header,
-		&matchedEntry.Route.Policies.Headers.Request,
-	)
+	req := &combo.req
 
+	policy.ExecuteMutations(req.Header, &matchedRoute.Policies.Headers.Request)
 	request.RemoveHopHeaders(req.Header)
 
-	// Execute the upstream request using the configured transport.
 	resp, err := executor.transport.RoundTrip(req)
 	if err != nil {
 		http.Error(w, "bad gateway: upstream request failed", http.StatusBadGateway)
 		return
 	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
+	defer func() { _ = resp.Body.Close() }()
 
+	dstHeader := w.Header()
 	for key, values := range resp.Header {
-		w.Header()[key] = append(w.Header()[key], values...)
+		dstHeader[key] = values
 	}
 
-	policy.ExecuteMutations(
-		w.Header(),
-		&matchedEntry.Route.Policies.Headers.Response,
-	)
+	policy.ExecuteMutations(w.Header(), &matchedRoute.Policies.Headers.Response)
 
 	w.WriteHeader(resp.StatusCode)
 

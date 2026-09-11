@@ -26,7 +26,7 @@ proxy:
 
 upstream_transport:
   max_idle_conns: 1024
-  max_idle_conns_per_host: 128
+  max_idle_conns_per_host: 1024
   max_conns_per_host: 0
   dial_timeout: 3s
   tls_handshake_timeout: 5s

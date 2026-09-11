@@ -113,7 +113,7 @@ type CompiledHeaders struct {
 	Response CompiledHeadersPlan
 }
 
-// HeaderRegistry resolves HeaderID into canonical header names.
+// HeaderRegistry resolves HeaderID into canoniƒcal header names.
 //
 // Registry is immutable after compilation.
 //

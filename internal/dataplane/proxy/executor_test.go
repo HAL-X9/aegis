@@ -363,5 +363,45 @@ func TestExecutor(t *testing.T) {
 		if gotBody != "payload" {
 			t.Fatalf("body = %q, want %q", gotBody, "payload")
 		}
+
+		t.Run("strips hop-by-hop headers from upstream response", func(t *testing.T) {
+			engine := buildTestEngine(t, testConfig(
+				snapshot.CompiledRoute{
+					Name:    "api",
+					Service: 0,
+					Match: snapshot.CompiledMatch{
+						PathPrefix: "/api",
+						Methods:    methodmask.MethodAll,
+					},
+				},
+			))
+
+			exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				h := make(http.Header)
+				h.Set("Connection", "close")
+				h.Set("Transfer-Encoding", "chunked")
+				h.Set("Content-Type", "text/plain")
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader("ok")),
+					Header:     h,
+				}, nil
+			}))
+
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/api", nil)
+
+			exec.ServeHTTP(rec, req)
+
+			if got := rec.Header().Get("Connection"); got != "" {
+				t.Errorf("Connection leaked to client: %q", got)
+			}
+			if got := rec.Header().Get("Transfer-Encoding"); got != "" {
+				t.Errorf("Transfer-Encoding leaked to client: %q", got)
+			}
+			if got := rec.Header().Get("Content-Type"); got != "text/plain" {
+				t.Errorf("Content-Type = %q, want preserved", got)
+			}
+		})
 	})
 }

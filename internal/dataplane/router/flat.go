@@ -13,6 +13,12 @@ const noNode = ^uint32(0)
 // arena. Every cross-reference is an index into one of FlatTrie's own
 // slices, never a pointer — so the whole trie is one GC-opaque memory
 // block, and sibling/child access stays cache-friendly on the hot path.
+//
+// Field order and set are unchanged from the original layout deliberately:
+// keeping sizeof(FlatNode) minimal maximizes how many sibling nodes share
+// a cache line during findChild's scan, which matters more for real
+// route-table fan-outs (typically single digits) than shaving one
+// indirection per comparison would.
 type FlatNode struct {
 	PrefixOffset uint32 // offset into FlatTrie.prefixes
 	PrefixLen    uint16
@@ -140,8 +146,9 @@ func (b *flatBuilder) add(root *RadixNode) error {
 
 // sortedChildren orders static children by first prefix byte. The radix
 // invariant (findChildByFirstByte) already guarantees uniqueness; sorting
-// just gives Lookup a predictable, binary-searchable order and keeps
-// physically adjacent trie levels adjacent in memory.
+// gives findChild a predictable order to scan and lets it exit as soon as
+// it passes the target byte, and keeps physically adjacent trie levels
+// adjacent in memory.
 func sortedChildren(children []*RadixNode) []*RadixNode {
 	if len(children) == 0 {
 		return nil
@@ -161,6 +168,12 @@ func sortedChildren(children []*RadixNode) []*RadixNode {
 // Zero heap allocations: the returned slice is a window into the trie's
 // own routeRefs arena, not a copy, and must not be retained past the
 // snapshot's lifetime.
+//
+// This stays recursive deliberately: recursion depth here is bounded by
+// the number of path segments in a URL (single digits in practice), and
+// Go's call overhead for that is cheaper than the fixed cost of setting
+// up any explicit backtrack structure on every call, even for paths that
+// never need to backtrack at all.
 func (t *FlatTrie) Lookup(path string) []uint32 {
 	if t == nil || len(t.nodes) == 0 {
 		return nil
@@ -232,20 +245,29 @@ func (t *FlatTrie) matchStaticSegment(nodeID uint32, segment string) (uint32, bo
 	return nodeID, true
 }
 
+// findChild scans node's static children for one starting with b. Children
+// are sorted by first prefix byte at build time (sortedChildren), so the
+// scan exits as soon as it passes b. For the small fan-outs typical of
+// real route tables (a handful of siblings per node), a linear scan over
+// a sorted, contiguous, cache-resident range beats a binary search: the
+// comparisons are sequential and mostly-not-taken, which branch predictors
+// handle far better than binary search's data-dependent jumps.
 func (t *FlatTrie) findChild(node *FlatNode, b byte) (uint32, bool) {
-	lo, hi := node.FirstChild, node.FirstChild+uint32(node.ChildCount)
-	for lo < hi {
-		mid := lo + (hi-lo)/2
-		mb := t.prefixes[t.nodes[mid].PrefixOffset]
-		switch {
-		case mb == b:
-			return mid, true
-		case mb < b:
-			lo = mid + 1
-		default:
-			hi = mid
+	first := node.FirstChild
+	count := uint32(node.ChildCount)
+
+	for i := range count {
+		idx := first + i
+		fb := t.prefixes[t.nodes[idx].PrefixOffset]
+
+		if fb == b {
+			return idx, true
+		}
+		if fb > b {
+			break
 		}
 	}
+
 	return 0, false
 }
 
@@ -257,7 +279,7 @@ func (t *FlatTrie) hasPrefix(id uint32, s string) bool {
 		return false
 	}
 	off := n.PrefixOffset
-	for i := 0; i < pl; i++ {
+	for i := range pl {
 		if t.prefixes[off+uint32(i)] != s[i] {
 			return false
 		}

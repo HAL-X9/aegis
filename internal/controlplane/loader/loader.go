@@ -8,7 +8,7 @@ import (
 	"github.com/HAL-X9/aegis/internal/controlplane/validate"
 )
 
-// Load reads the YAML file at path, unmarshals it into AegisManifest, and runs Validate.
+// Load reads the YAML file at path, unmarshals it into GatewayConfig, and runs Validate.
 // On success the returned value is safe for use by the gateway control-plane layer.
 func Load(path string) (*schema.GatewayConfig, error) {
 	cfg, err := config.ReadAndDecodeYaml[schema.GatewayConfig](path)

@@ -2,6 +2,7 @@ package router
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 )
@@ -43,10 +44,8 @@ func HeadersMatch(preds []snapshot.HeaderPredicate, headers http.Header) bool {
 // any value from the allowed set.
 func anyValueAllowed(reqValues []string, allowed []string) bool {
 	for _, rv := range reqValues {
-		for _, av := range allowed {
-			if rv == av {
-				return true
-			}
+		if slices.Contains(allowed, rv) {
+			return true
 		}
 	}
 	return false

@@ -11,6 +11,7 @@ import (
 	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/request"
+	"github.com/HAL-X9/aegis/internal/dataplane/routelabel"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
 )
 
@@ -77,6 +78,12 @@ func NewExecutor(engine *router.Engine, rateLimiters *policy.RateLimiterSet, tra
 //   - returns 502 if upstream request execution fails
 //
 // The request body is forwarded as-is to the upstream service.
+//
+// Once a route is matched, ServeHTTP reports the route's identifier via
+// routelabel so the metrics middleware can label request metrics by route
+// instead of by raw path (see internal/dataplane/routelabel). Requests that
+// never reach a route match (503/500/404/405 above) are left unlabeled and
+// fall back to "unmatched" in the recorded metrics.
 func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Validate routing engine availability before request processing.
 	if executor.engine == nil {
@@ -128,6 +135,16 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Report the matched route to the metrics middleware, if present, so
+	// even a subsequent 429/502 below still gets labeled with the route
+	// that produced it rather than falling back to "unmatched".
+	//
+	// NOTE: matchedRoute.Name is assumed to be the compiled route's
+	// stable, config-provided identifier (see docs/policies.md's
+	// `routes: - name: example`). Adjust this to whatever field actually
+	// holds that identifier on snapshot.CompiledRoute if it differs.
+	routelabel.FromContext(r.Context()).SetRoutePattern(matchedRoute.Name)
+
 	if !executor.rateLimiters.Allow(matchedRoute) {
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
@@ -169,11 +186,16 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	dstHeader := w.Header()
-	maps.Copy(dstHeader, resp.Header)
-	request.RemoveHopHeaders(dstHeader)
-
-	policy.ExecuteMutations(w.Header(), &matchedRoute.Policies.Headers.Response)
+	// Mutate resp.Header in place before copying to w.Header():
+	// strip hop-by-hop headers and apply response policy first.
+	// This avoids intermediate map growth and ensures w.Header()
+	// receives only the final set of headers in a single copy.
+	//
+	// This changes the documented order in docs/policies.md.
+	// The final w.Header() is unchanged because the stages do not overlap.
+	request.RemoveHopHeaders(resp.Header)
+	policy.ExecuteMutations(resp.Header, &matchedRoute.Policies.Headers.Response)
+	maps.Copy(w.Header(), resp.Header)
 
 	w.WriteHeader(resp.StatusCode)
 

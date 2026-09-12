@@ -21,11 +21,15 @@ func NewRateLimiterSet(compiled []snapshot.CompiledRateLimit) *RateLimiterSet {
 }
 
 // Allow reports whether the request is permitted under the referenced
-// rate-limit policy. Any ID without a corresponding limiter — including
-// NoRateLimit and any out-of-range zero-value ID from an unset field —
-// is treated as "no limit" rather than panicking or silently picking
-// policy 0.
+// rate-limit policy. A nil route, or any ID without a corresponding
+// limiter — including NoRateLimit and any out-of-range zero-value ID from
+// an unset field — is treated as "no limit" rather than panicking or
+// silently picking policy 0.
 func (s *RateLimiterSet) Allow(route *snapshot.CompiledRoute) bool {
+	if route == nil {
+		return true
+	}
+
 	id := route.Policies.RateLimitID
 	if id < 0 || int(id) >= len(s.limiters) {
 		return true

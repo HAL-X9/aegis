@@ -59,8 +59,14 @@ func Bootstrap(cfg *config.Runtime, manifest *schema.GatewayConfig) (*Dependenci
 	metricsCollector := metrics.NewMetrics(prometheus.DefaultRegisterer)
 	healthSvc := health.NewHealth()
 
-	systemHTTP := edgeadmin.NewSystemServer(cfg, healthSvc, promhttp.Handler())
-	publicHTTP := edgepublic.NewPublicServer(cfg, executor, metricsCollector)
+	systemHTTP, err := edgeadmin.NewSystemServer(cfg, healthSvc, promhttp.Handler())
+	if err != nil {
+		return nil, fmt.Errorf("build system HTTP server: %w", err)
+	}
+	publicHTTP, err := edgepublic.NewPublicServer(cfg, executor, metricsCollector)
+	if err != nil {
+		return nil, fmt.Errorf("build public HTTP server: %w", err)
+	}
 
 	return &Dependencies{
 		Config:     cfg,

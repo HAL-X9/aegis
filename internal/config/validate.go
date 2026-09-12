@@ -71,6 +71,25 @@ func validateHTTP(cfg *HTTP) error {
 		return fmt.Errorf("max_header_bytes cannot be negative")
 	}
 
+	if err := validateTLS(cfg.TLS); err != nil {
+		return fmt.Errorf("tls: %w", err)
+	}
+
+	return nil
+}
+
+func validateTLS(cfg *TLSConfig) error {
+	if cfg == nil {
+		return nil
+	}
+
+	if cfg.CertFile == "" {
+		return fmt.Errorf("cert_file is required when TLS is configured")
+	}
+	if cfg.KeyFile == "" {
+		return fmt.Errorf("key_file is required when TLS is configured")
+	}
+
 	return nil
 }
 

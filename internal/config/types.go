@@ -3,16 +3,21 @@
 package config
 
 import (
-	"crypto/tls"
 	"time"
 )
 
 // HTTP configures the inbound HTTP server: listen address, optional TLS, limits, and timeouts.
 type HTTP struct {
-	Addr           string      `yaml:"addr"`
-	TLS            *tls.Config `yaml:"tls"`
-	Timeouts       Timeouts    `yaml:"timeouts"`
-	MaxHeaderBytes int         `yaml:"max_header_bytes"`
+	Addr           string     `yaml:"addr"`
+	TLS            *TLSConfig `yaml:"tls"`
+	Timeouts       Timeouts   `yaml:"timeouts"`
+	MaxHeaderBytes int        `yaml:"max_header_bytes"`
+}
+
+// TLSConfig configures one static certificate for an inbound HTTPS listener.
+type TLSConfig struct {
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
 }
 
 // Timeouts sets net/http Server deadline fields; zero values use library defaults where applicable.

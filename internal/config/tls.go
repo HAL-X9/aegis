@@ -14,10 +14,16 @@ func BuildTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
 
 	certificate, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 	if err != nil {
-		return nil, fmt.Errorf("load certificate %q and key %q: %w", cfg.CertFile, cfg.KeyFile, err)
+		return nil, fmt.Errorf(
+			"load certificate %q and key %q: %w",
+			cfg.CertFile,
+			cfg.KeyFile,
+			err,
+		)
 	}
 
 	return &tls.Config{
 		Certificates: []tls.Certificate{certificate},
+		MinVersion:   tls.VersionTLS12,
 	}, nil
 }

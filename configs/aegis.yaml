@@ -1,10 +1,6 @@
 listeners:
   public:
     addr: ":8080"
-    tls:
-      certs:
-        - cert_file: "etc/aegis/certs/example.com.crt"
-          key_file: /run/secrets/aegis/tls.key
 
     timeouts:
       read_timeout: 10s

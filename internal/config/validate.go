@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -84,10 +85,11 @@ func validateTLS(cfg *TLSConfig) error {
 	}
 
 	if cfg.CertFile == "" {
-		return fmt.Errorf("cert_file is required when TLS is configured")
+		return errors.New("tls: cert_file is required")
 	}
+
 	if cfg.KeyFile == "" {
-		return fmt.Errorf("key_file is required when TLS is configured")
+		return errors.New("tls: key_file is required")
 	}
 
 	return nil

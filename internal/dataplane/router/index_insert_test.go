@@ -12,7 +12,7 @@ func lookupViaFlatten(t *testing.T, trie *RadixTrie, path string) []uint32 {
 	if err != nil {
 		t.Fatalf("Flatten failed: %v", err)
 	}
-	return flat.Lookup(path)
+	return flatLookupIDs(flat, path)
 }
 
 func TestRadixTrieInsert(t *testing.T) {

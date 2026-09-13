@@ -19,7 +19,7 @@ func TestBuildRadixTrie(t *testing.T) {
 			t.Fatalf("Flatten failed: %v", err)
 		}
 
-		if got := flat.Lookup("/anything"); got != nil {
+		if got := flatLookupIDs(flat, "/anything"); got != nil {
 			t.Fatalf("lookup on empty trie = %#v", got)
 		}
 	})
@@ -37,8 +37,8 @@ func TestBuildRadixTrie(t *testing.T) {
 			t.Fatalf("Flatten failed: %v", err)
 		}
 
-		gotA := flat.Lookup("/a")
-		gotB := flat.Lookup("/b")
+		gotA := flatLookupIDs(flat, "/a")
+		gotB := flatLookupIDs(flat, "/b")
 
 		if len(gotA) != 1 || gotA[0] != 0 {
 			t.Fatalf("lookup /a = %#v, want [0]", gotA)

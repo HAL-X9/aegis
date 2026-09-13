@@ -52,14 +52,20 @@ func BuildEngine(cfg *snapshot.CompiledConfig) (*Engine, error) {
 	}, nil
 }
 
-// Lookup returns route-ID candidates matching path. The returned slice is
-// a window into the engine's own arena — do not retain it past the
-// engine's lifetime, and do not mutate it.
-func (e *Engine) Lookup(path string) []uint32 {
+// Lookup calls visit, in priority order (static > param > wildcard, most
+// specific first, including path_prefix fallbacks), for every candidate
+// set that structurally matches path. visit should apply predicates
+// Lookup can't — method, headers — and return true once it has accepted
+// a route; Lookup stops as soon as that happens. See router.FlatTrie.Lookup
+// for the full contract.
+//
+// The candidates slice passed to visit is a window into the engine's own
+// arena — do not retain it past the call, and do not mutate it.
+func (e *Engine) Lookup(path string, visit func(candidates []uint32) bool) {
 	if e == nil || path == "" {
-		return nil
+		return
 	}
-	return e.trie.Lookup(path)
+	e.trie.Lookup(path, visit)
 }
 
 // Route returns the compiled route for a route ID returned by Lookup.

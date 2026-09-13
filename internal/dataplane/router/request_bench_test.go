@@ -164,7 +164,7 @@ func buildBenchEngine(
 	target := strconv.Itoa(size / 2)
 	path := "/api/v1/service-" + target + "/resource"
 
-	if got := engine.Lookup(path); len(got) == 0 {
+	if got := engineLookupIDs(engine, path); len(got) == 0 {
 		tb.Fatalf("fixture path %q did not resolve to a route", path)
 	}
 
@@ -249,7 +249,7 @@ func buildDeepBenchEngine(tb testing.TB, size int) (*Engine, string) {
 		path += "/" + segment
 	}
 
-	if got := engine.Lookup(path); len(got) == 0 {
+	if got := engineLookupIDs(engine, path); len(got) == 0 {
 		tb.Fatalf("fixture path %q did not resolve to a route", path)
 	}
 
@@ -292,13 +292,14 @@ func BenchmarkLookupHighFanout(b *testing.B) {
 		)
 
 		b.Run("routes="+strconv.Itoa(size), func(b *testing.B) {
+			var out []uint32
+			visit := func(c []uint32) bool { out = c; return true }
+
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			var out []uint32
-
 			for i := 0; i < b.N; i++ {
-				out = engine.Lookup(path)
+				engine.Lookup(path, visit)
 			}
 
 			sinkIDs = out
@@ -329,13 +330,14 @@ func BenchmarkLookupDeep(b *testing.B) {
 		)
 
 		b.Run("routes="+strconv.Itoa(size), func(b *testing.B) {
+			var out []uint32
+			visit := func(c []uint32) bool { out = c; return true }
+
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			var out []uint32
-
 			for i := 0; i < b.N; i++ {
-				out = engine.Lookup(path)
+				engine.Lookup(path, visit)
 			}
 
 			sinkIDs = out
@@ -410,7 +412,7 @@ func buildMixedBenchEngine(
 	}
 
 	for _, path := range lookupPaths {
-		if got := engine.Lookup(path); len(got) == 0 {
+		if got := engineLookupIDs(engine, path); len(got) == 0 {
 			tb.Fatalf("fixture path %q did not resolve to a route", path)
 		}
 	}
@@ -440,13 +442,14 @@ func BenchmarkLookupMixed(b *testing.B) {
 		)
 
 		b.Run("routes="+strconv.Itoa(groups*3), func(b *testing.B) {
+			var out []uint32
+			visit := func(c []uint32) bool { out = c; return true }
+
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			var out []uint32
-
 			for i := 0; i < b.N; i++ {
-				out = engine.Lookup(paths[i%len(paths)])
+				engine.Lookup(paths[i%len(paths)], visit)
 			}
 
 			sinkIDs = out
@@ -518,7 +521,7 @@ func BenchmarkMethodAdmission(b *testing.B) {
 			headerNone,
 		)
 
-		route := engine.Route(engine.Lookup(path)[0])
+		route := engine.Route(engineLookupIDs(engine, path)[0])
 
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()
@@ -563,7 +566,7 @@ func BenchmarkHeadersMatch(b *testing.B) {
 			tc.mode,
 		)
 
-		route := engine.Route(engine.Lookup(path)[0])
+		route := engine.Route(engineLookupIDs(engine, path)[0])
 		preds := route.Match.Headers
 
 		reqHeaders := make([]http.Header, len(benchHeaderValues))
@@ -592,35 +595,54 @@ func BenchmarkHeadersMatch(b *testing.B) {
 	}
 }
 
+// requestMatcher adapts Engine.Lookup's visitor callback to the
+// method+header matching matchRequest needs below. It's a small value
+// type with a pointer-receiver method rather than a closure literal
+// constructed inside matchRequest, specifically so the compiler can keep
+// the receiver on the stack: neither Engine.Lookup nor FlatTrie's
+// internal lookup ever retain the visit func past the call that invokes
+// it, so escape analysis can prove requestMatcher never needs the heap —
+// which a fresh closure allocated per matchRequest call would not
+// reliably get.
+type requestMatcher struct {
+	engine    *Engine
+	methodBit methodmask.MethodMask
+	headers   http.Header
+	matched   *snapshot.CompiledRoute
+}
+
+func (m *requestMatcher) visit(candidateIDs []uint32) bool {
+	for _, id := range candidateIDs {
+		route := m.engine.Route(id)
+
+		if route.Match.Methods&m.methodBit == 0 {
+			continue
+		}
+		if !HeadersMatch(route.Match.Headers, m.headers) {
+			continue
+		}
+
+		m.matched = route
+		return true
+	}
+	return false
+}
+
 func matchRequest(
 	engine *Engine,
 	method string,
 	path string,
 	headers http.Header,
 ) *snapshot.CompiledRoute {
-	candidateIDs := engine.Lookup(path)
-
-	if len(candidateIDs) == 0 {
-		return nil
+	m := requestMatcher{
+		engine:    engine,
+		methodBit: requestMethodBit(method),
+		headers:   headers,
 	}
 
-	methodBit := requestMethodBit(method)
+	engine.Lookup(path, m.visit)
 
-	for _, id := range candidateIDs {
-		route := engine.Route(id)
-
-		if route.Match.Methods&methodBit == 0 {
-			continue
-		}
-
-		if !HeadersMatch(route.Match.Headers, headers) {
-			continue
-		}
-
-		return route
-	}
-
-	return nil
+	return m.matched
 }
 
 func BenchmarkRequestMatch(b *testing.B) {

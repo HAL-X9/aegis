@@ -11,7 +11,7 @@ func TestFlattenAndLookup(t *testing.T) {
 		if flat == nil {
 			t.Fatal("expected non-nil FlatTrie")
 		}
-		if got := flat.Lookup("/anything"); got != nil {
+		if got := flatLookupIDs(flat, "/anything"); got != nil {
 			t.Fatalf("got %#v, want nil", got)
 		}
 	})
@@ -29,7 +29,7 @@ func TestFlattenAndLookup(t *testing.T) {
 
 		cases := map[string]uint32{"/a": 1, "/ab": 2, "/abc": 3}
 		for path, want := range cases {
-			got := flat.Lookup(path)
+			got := flatLookupIDs(flat, path)
 			if len(got) != 1 || got[0] != want {
 				t.Fatalf("lookup(%q) = %#v, want [%d]", path, got, want)
 			}
@@ -48,15 +48,15 @@ func TestFlattenAndLookup(t *testing.T) {
 		}
 
 		// Static edge must win over the param edge for an exact match.
-		if got := flat.Lookup("/users/static"); len(got) != 1 || got[0] != 2 {
+		if got := flatLookupIDs(flat, "/users/static"); len(got) != 1 || got[0] != 2 {
 			t.Fatalf("static-over-param lookup = %#v, want [2]", got)
 		}
 
-		if got := flat.Lookup("/users/42"); len(got) != 1 || got[0] != 1 {
+		if got := flatLookupIDs(flat, "/users/42"); len(got) != 1 || got[0] != 1 {
 			t.Fatalf("param lookup = %#v, want [1]", got)
 		}
 
-		if got := flat.Lookup("/assets/img/logo.png"); len(got) != 1 || got[0] != 3 {
+		if got := flatLookupIDs(flat, "/assets/img/logo.png"); len(got) != 1 || got[0] != 3 {
 			t.Fatalf("wildcard lookup = %#v, want [3]", got)
 		}
 	})
@@ -73,10 +73,28 @@ func TestFlattenAndLookup(t *testing.T) {
 		}
 
 		for i, seg := range []string{"aa", "bb", "cc", "dd", "ee", "ff", "gg"} {
-			got := flat.Lookup("/" + seg)
+			got := flatLookupIDs(flat, "/"+seg)
 			if len(got) != 1 || got[0] != uint32(i) {
 				t.Fatalf("lookup(/%s) = %#v, want [%d]", seg, got, i)
 			}
 		}
 	})
+}
+
+func engineLookupIDs(e *Engine, path string) []uint32 {
+	var got []uint32
+	e.Lookup(path, func(c []uint32) bool {
+		got = c
+		return true
+	})
+	return got
+}
+
+func flatLookupIDs(t *FlatTrie, path string) []uint32 {
+	var got []uint32
+	t.Lookup(path, func(c []uint32) bool {
+		got = c
+		return true
+	})
+	return got
 }

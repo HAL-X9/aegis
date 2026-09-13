@@ -162,26 +162,44 @@ func sortedChildren(children []*RadixNode) []*RadixNode {
 	return out
 }
 
-// Lookup resolves route-ID candidates for path.
+// Lookup walks the trie for path in priority order — static children,
+// then param, then wildcard, matching Insert's compression — and calls
+// visit once for every candidate set it finds along the way, most
+// specific first.
 //
-// Priority: static > param > wildcard, matching Insert's compression.
-// Zero heap allocations: the returned slice is a window into the trie's
-// own routeRefs arena, not a copy, and must not be retained past the
-// snapshot's lifetime.
+// visit expresses predicates Lookup itself knows nothing about (method,
+// headers, ...): return false to mean "none of these routes are
+// acceptable, keep looking", or true to accept and stop. This is what
+// lets a caller apply those predicates without Lookup ever discarding a
+// structurally valid fallback route the way returning a single "best"
+// slice would — see the package-level routing doc for the 404/405
+// implications of that distinction.
+//
+// A node with a registered route also matches any path that continues
+// past it (e.g. a route registered at "/api/v1/profile" is offered as a
+// candidate for "/api/v1/profile/123" too, once nothing more specific
+// exists below it) — this is what gives path_prefix genuine prefix
+// semantics rather than exact-match semantics.
+//
+// The candidates slice passed to visit is a window into the trie's own
+// routeRefs arena, not a copy; visit must not retain it past the call.
 //
 // This stays recursive deliberately: recursion depth here is bounded by
 // the number of path segments in a URL (single digits in practice), and
 // Go's call overhead for that is cheaper than the fixed cost of setting
 // up any explicit backtrack structure on every call, even for paths that
 // never need to backtrack at all.
-func (t *FlatTrie) Lookup(path string) []uint32 {
-	if t == nil || len(t.nodes) == 0 {
-		return nil
+func (t *FlatTrie) Lookup(path string, visit func(candidates []uint32) bool) {
+	if t == nil || len(t.nodes) == 0 || visit == nil {
+		return
 	}
-	return t.lookup(0, path)
+	t.lookup(0, path, visit)
 }
 
-func (t *FlatTrie) lookup(nodeID uint32, path string) []uint32 {
+// lookup reports whether visit has accepted a candidate set anywhere in
+// this subtree, so callers higher up the recursion know to stop trying
+// their own lower-priority branches.
+func (t *FlatTrie) lookup(nodeID uint32, path string, visit func([]uint32) bool) bool {
 	for len(path) > 0 && path[0] == '/' {
 		path = path[1:]
 	}
@@ -189,13 +207,13 @@ func (t *FlatTrie) lookup(nodeID uint32, path string) []uint32 {
 	node := &t.nodes[nodeID]
 
 	if len(path) == 0 {
-		if node.RouteCount > 0 {
-			return t.candidatesOf(nodeID)
+		if node.RouteCount > 0 && visit(t.candidatesOf(nodeID)) {
+			return true
 		}
 		if node.WildcardChild != noNode {
-			return t.candidatesOf(node.WildcardChild)
+			return visit(t.candidatesOf(node.WildcardChild))
 		}
-		return nil
+		return false
 	}
 
 	end := 0
@@ -205,22 +223,53 @@ func (t *FlatTrie) lookup(nodeID uint32, path string) []uint32 {
 	segment, rest := path[:end], path[end:]
 
 	if childID, ok := t.matchStaticSegment(nodeID, segment); ok {
-		if result := t.lookup(childID, rest); result != nil {
-			return result
+		if t.lookupOrFallback(childID, rest, visit) {
+			return true
 		}
 	}
 
 	if node.ParamChild != noNode {
-		if result := t.lookup(node.ParamChild, rest); result != nil {
-			return result
+		if t.lookupOrFallback(node.ParamChild, rest, visit) {
+			return true
 		}
 	}
 
 	if node.WildcardChild != noNode {
-		return t.candidatesOf(node.WildcardChild)
+		return visit(t.candidatesOf(node.WildcardChild))
 	}
 
-	return nil
+	return false
+}
+
+// lookupOrFallback recurses into nodeID for the remaining path and, if
+// nothing accepted turns up deeper in that branch, falls back to
+// nodeID's own registered route (if any). The fallback is what makes
+// path_prefix a real prefix: nodeID matched segment-for-segment against
+// the input, so its route is a valid — if less specific — answer for
+// whatever unmatched remainder is left, exactly like a router falling
+// back from a param/wildcard miss to a shorter static prefix.
+//
+// The fallback is only attempted when rest still holds a real, unmatched
+// continuation of the path: when rest is empty, lookup's own terminal
+// branch already tried nodeID's routes, and re-trying here would just
+// call visit a second time with the same candidates for no reason.
+func (t *FlatTrie) lookupOrFallback(nodeID uint32, rest string, visit func([]uint32) bool) bool {
+	if t.lookup(nodeID, rest, visit) {
+		return true
+	}
+
+	trimmed := rest
+	for len(trimmed) > 0 && trimmed[0] == '/' {
+		trimmed = trimmed[1:]
+	}
+	if trimmed == "" {
+		return false
+	}
+
+	if cands := t.candidatesOf(nodeID); cands != nil {
+		return visit(cands)
+	}
+	return false
 }
 
 // matchStaticSegment walks the compressed static edges under nodeID that

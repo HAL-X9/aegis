@@ -43,10 +43,13 @@ var copyBufferPool = sync.Pool{
 // single heap allocation. RoundTripper requires req.URL to be a pointer, so
 // without this trick the two would land in two separate mallocgc calls.
 //
-// Pooling is safe here because the standard http.Transport never retains a
-// *Request or its URL past the RoundTrip call that owns it. If transport is
-// ever swapped for a custom RoundTripper that queues requests for background
-// retry, that contract must be re-verified before reusing this pool.
+// Pooling this is only safe because the standard library's *http.Transport
+// documents that it never retains a *Request or its URL past the RoundTrip
+// call that owns it. Executor.transport is an interface, so that contract
+// cannot be assumed for whatever value is actually injected — buildUpstreamRequest
+// below type-asserts to *http.Transport and only pools on that positive
+// match, falling back to a plain allocation for any other RoundTripper
+// (e.g. one that queues requests for background retry).
 type upstreamRequest struct {
 	req http.Request
 	url url.URL
@@ -64,6 +67,55 @@ func NewExecutor(engine *router.Engine, rateLimiters *policy.RateLimiterSet, tra
 		rateLimiters: rateLimiters,
 		transport:    transport,
 	}
+}
+
+// buildUpstreamRequest builds the outbound request for route, carrying
+// over r's method, headers, body, and context, with the path/query
+// rewritten onto the route's upstream origin.
+//
+// The req+url pair is served from upstreamRequestPool only when transport
+// is verified to be the standard library's *http.Transport — the only
+// RoundTripper whose documented behavior makes reusing that memory after
+// RoundTrip returns safe (see upstreamRequestPool's doc comment). Any
+// other transport gets a freshly allocated, unpooled request instead, so
+// pooling can never be silently unsafe just because Executor was built
+// with a different RoundTripper.
+//
+// release must be called exactly once when req is no longer needed.
+func (executor *Executor) buildUpstreamRequest(r *http.Request, route *snapshot.CompiledRoute) (req *http.Request, release func()) {
+	upstreamURL := *executor.engine.UpstreamURL(route)
+	upstreamURL.Path = r.URL.Path
+	upstreamURL.RawPath = r.URL.RawPath
+	upstreamURL.RawQuery = r.URL.RawQuery
+
+	if _, poolable := executor.transport.(*http.Transport); poolable {
+		combo := upstreamRequestPool.Get().(*upstreamRequest)
+
+		combo.url = upstreamURL
+		// A full struct copy of *r — not field-by-field construction — is
+		// what carries over r's unexported ctx (deadline, cancellation,
+		// trace info) without an extra WithContext allocation: WithContext
+		// just does this same copy internally and hands back a *new* heap
+		// object, so doing it ourselves into combo.req is strictly one
+		// allocation cheaper.
+		combo.req = *r
+		combo.req.URL = &combo.url
+		// RequestURI is populated by net/http for incoming server requests
+		// and must be empty on outgoing client requests — Transport.RoundTrip
+		// rejects it otherwise ("Request.RequestURI can't be set in client
+		// requests"). Everything else copied from *r (Header, Body,
+		// ContentLength, TLS, etc.) is either correct as-is for a proxied
+		// request or harmless/ignored by the client Transport.
+		combo.req.RequestURI = ""
+
+		return &combo.req, func() { upstreamRequestPool.Put(combo) }
+	}
+
+	out := new(http.Request)
+	*out = *r
+	out.URL = &upstreamURL
+	out.RequestURI = ""
+	return out, func() {}
 }
 
 // ServeHTTP resolves the incoming request using the routing engine and
@@ -97,12 +149,6 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	candidateIDs := executor.engine.Lookup(r.URL.Path)
-	if len(candidateIDs) == 0 {
-		http.NotFound(w, r)
-		return
-	}
-
 	// Resolve the bitmask representation of the incoming HTTP method.
 	// Unsupported methods are rejected explicitly.
 	methodBit, ok := methodmask.MethodBit(r.Method)
@@ -111,27 +157,47 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var methodMatch bool
-	var matchedRoute *snapshot.CompiledRoute
+	// pathMatched and methodMatched are tracked across every candidate set
+	// the trie offers, not just the first (most specific) one. Lookup
+	// tries lower-priority branches (static -> param -> wildcard, plus
+	// path_prefix fallbacks) whenever visit returns false, so a route
+	// that structurally matches but fails method/header predicates never
+	// hides a valid fallback route — see docs/routing-and-errors.md.
+	var (
+		pathMatched   bool
+		methodMatched bool
+		matchedRoute  *snapshot.CompiledRoute
+	)
 
-	for _, id := range candidateIDs {
-		route := executor.engine.Route(id)
-		if route.Match.Methods&methodBit != 0 {
-			methodMatch = true
+	executor.engine.Lookup(r.URL.Path, func(candidateIDs []uint32) bool {
+		pathMatched = true
+
+		for _, id := range candidateIDs {
+			route := executor.engine.Route(id)
+			if route.Match.Methods&methodBit == 0 {
+				continue
+			}
+			methodMatched = true
 
 			if router.HeadersMatch(route.Match.Headers, r.Header) {
 				matchedRoute = route
-				break
+				return true
 			}
 		}
-	}
+		return false
+	})
 
-	if matchedRoute == nil {
-		if !methodMatch {
-			http.Error(w, "method not allowed for matched route", http.StatusMethodNotAllowed)
-			return
-		}
+	switch {
+	case !pathMatched:
 		http.NotFound(w, r)
+		return
+	case matchedRoute == nil && methodMatched:
+		// Some candidate supported the method but none had matching
+		// headers — from the client's perspective there is no route here.
+		http.NotFound(w, r)
+		return
+	case matchedRoute == nil:
+		http.Error(w, "method not allowed for matched route", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -139,42 +205,25 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// even a subsequent 429/502 below still gets labeled with the route
 	// that produced it rather than falling back to "unmatched".
 	//
-	// NOTE: matchedRoute.Name is assumed to be the compiled route's
-	// stable, config-provided identifier (see docs/policies.md's
-	// `routes: - name: example`). Adjust this to whatever field actually
-	// holds that identifier on snapshot.CompiledRoute if it differs.
-	routelabel.FromContext(r.Context()).SetRoutePattern(matchedRoute.Name)
+	// matchedRoute.Name is the route's stable, config-provided identifier
+	// (docs/policies.md, `routes: - name: example`) — that's a contract
+	// owned by snapshot.CompiledRoute, not an inference made here. An
+	// empty Name would mean that contract was violated upstream (loader
+	// or compiler bug), so metrics get an explicit sentinel instead of a
+	// silently blank route label.
+	routeLabel := matchedRoute.Name
+	if routeLabel == "" {
+		routeLabel = "unnamed-route"
+	}
+	routelabel.FromContext(r.Context()).SetRoutePattern(routeLabel)
 
 	if !executor.rateLimiters.Allow(matchedRoute) {
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
 	}
 
-	combo := upstreamRequestPool.Get().(*upstreamRequest)
-	defer upstreamRequestPool.Put(combo)
-
-	combo.url = *executor.engine.UpstreamURL(matchedRoute)
-	combo.url.Path = r.URL.Path
-	combo.url.RawPath = r.URL.RawPath
-	combo.url.RawQuery = r.URL.RawQuery
-
-	// A full struct copy of *r — not field-by-field construction — is what
-	// carries over r's unexported ctx (deadline, cancellation, trace info)
-	// without an extra WithContext allocation: WithContext just does this
-	// same copy internally and hands back a *new* heap object, so doing it
-	// ourselves into combo.req is strictly one allocation cheaper.
-	combo.req = *r
-	combo.req.URL = &combo.url
-
-	// RequestURI is populated by net/http for incoming server requests and
-	// must be empty on outgoing client requests — Transport.RoundTrip
-	// rejects it otherwise ("Request.RequestURI can't be set in client
-	// requests"). Everything else copied from *r (Header, Body,
-	// ContentLength, TLS, etc.) is either correct as-is for a proxied
-	// request or harmless/ignored by the client Transport.
-	combo.req.RequestURI = ""
-
-	req := &combo.req
+	req, release := executor.buildUpstreamRequest(r, matchedRoute)
+	defer release()
 
 	policy.ExecuteMutations(req.Header, &matchedRoute.Policies.Headers.Request)
 	request.RemoveHopHeaders(req.Header)

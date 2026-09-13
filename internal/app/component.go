@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 )
 
@@ -30,17 +32,27 @@ func newHTTPComponent(name string, server *http.Server) (*httpComponent, error) 
 	return &httpComponent{name: name, server: server}, nil
 }
 
-// run blocks serving traffic until shutdown stops the server (or the
-// server fails to bind in the first place). It returns nil for the
-// expected case — Shutdown was called elsewhere, ListenAndServe
-// consequently returned http.ErrServerClosed — and a wrapped error for
-// anything else.
+// run binds the listener and blocks serving traffic until shutdown stops
+// the server (or the bind/serve fails outright). It returns nil for the
+// expected case — Shutdown was called elsewhere, Serve consequently
+// returned http.ErrServerClosed — and a wrapped error for anything else.
 func (c *httpComponent) run() error {
-	log.Printf("aegis: %s listener starting on %s", c.name, c.server.Addr)
+	scheme := "http"
+	if c.server.TLSConfig != nil {
+		scheme = "https"
+	}
+	log.Printf("aegis: %s listener starting on %s (%s)", c.name, c.server.Addr, scheme)
 
-	err := c.server.ListenAndServe()
-	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("%s: listen: %w", c.name, err)
+	ln, err := net.Listen("tcp", c.server.Addr)
+	if err != nil {
+		return fmt.Errorf("%s: listen on %s: %w", c.name, c.server.Addr, err)
+	}
+	if c.server.TLSConfig != nil {
+		ln = tls.NewListener(ln, c.server.TLSConfig)
+	}
+
+	if err := c.server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("%s: serve: %w", c.name, err)
 	}
 	return nil
 }

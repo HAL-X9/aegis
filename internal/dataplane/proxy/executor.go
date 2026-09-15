@@ -235,15 +235,8 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Mutate resp.Header in place before copying to w.Header():
-	// strip hop-by-hop headers and apply response policy first.
-	// This avoids intermediate map growth and ensures w.Header()
-	// receives only the final set of headers in a single copy.
-	//
-	// This changes the documented order in docs/policies.md.
-	// The final w.Header() is unchanged because the stages do not overlap.
-	request.RemoveHopHeaders(resp.Header)
 	policy.ExecuteMutations(resp.Header, &matchedRoute.Policies.Headers.Response)
+	request.RemoveHopHeaders(resp.Header)
 	maps.Copy(w.Header(), resp.Header)
 
 	w.WriteHeader(resp.StatusCode)

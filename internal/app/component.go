@@ -60,7 +60,9 @@ func (c *httpComponent) run() error {
 // shutdown stops accepting new connections and waits for in-flight
 // requests to finish, bounded by ctx.
 func (c *httpComponent) shutdown(ctx context.Context) error {
-	if err := c.server.Shutdown(ctx); err != nil {
+	err := c.server.Shutdown(ctx)
+	if err != nil {
+		_ = c.server.Close()
 		return fmt.Errorf("%s: shutdown: %w", c.name, err)
 	}
 	log.Printf("aegis: %s listener stopped", c.name)

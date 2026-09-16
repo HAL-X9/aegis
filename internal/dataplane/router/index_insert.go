@@ -1,5 +1,7 @@
 package router
 
+import "github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+
 // RadixNode is a build-time radix trie node. It exists only while the
 // control plane constructs the routing table; the request hot path never
 // touches it — see FlatTrie in flat.go.
@@ -14,7 +16,7 @@ type RadixNode struct {
 
 	// candidates holds indices into snapshot.CompiledConfig.Routes, not
 	// pointers — there is nothing here for Flatten to translate.
-	candidates []uint32
+	candidates []snapshot.RouteID
 }
 
 // RadixTrie is a build-time radix path index for compiled routes.
@@ -28,11 +30,10 @@ type RadixTrie struct {
 // favors correctness and real radix compression over avoiding
 // allocations. The request hot path runs entirely against the flattened
 // arena produced by Flatten — see flat.go.
-func (t *RadixTrie) Insert(path string, routeID uint32) {
+func (t *RadixTrie) Insert(path string, routeID snapshot.RouteID) {
 	if t.root == nil {
 		t.root = &RadixNode{}
 	}
-
 	node := t.root
 	remaining := path
 
@@ -41,7 +42,6 @@ func (t *RadixTrie) Insert(path string, routeID uint32) {
 			remaining = remaining[1:]
 			continue
 		}
-
 		segment, rest := nextSegment(remaining)
 		remaining = rest
 
@@ -51,14 +51,12 @@ func (t *RadixTrie) Insert(path string, routeID uint32) {
 				node.paramChild = &RadixNode{}
 			}
 			node = node.paramChild
-
 		case '*':
 			if node.wildcardChild == nil {
 				node.wildcardChild = &RadixNode{}
 			}
 			node = node.wildcardChild
-			remaining = "" // wildcard consumes the rest of the path
-
+			remaining = ""
 		default:
 			node = insertStaticSegment(node, segment)
 		}
@@ -132,10 +130,7 @@ func nextSegment(path string) (segment, rest string) {
 }
 
 func commonPrefixLen(a, b string) int {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
-	}
+	n := min(len(b), len(a))
 	i := 0
 	for i < n && a[i] == b[i] {
 		i++

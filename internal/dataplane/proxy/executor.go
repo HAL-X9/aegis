@@ -169,7 +169,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		matchedRoute  *snapshot.CompiledRoute
 	)
 
-	executor.engine.Lookup(r.URL.Path, func(candidateIDs []uint32) bool {
+	executor.engine.Lookup(r.URL.Path, func(candidateIDs []snapshot.RouteID) bool {
 		pathMatched = true
 
 		for _, id := range candidateIDs {

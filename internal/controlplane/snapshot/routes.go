@@ -2,6 +2,9 @@ package snapshot
 
 import "github.com/HAL-X9/aegis/internal/contracts/methodmask"
 
+// RouteID is a stable index into CompiledConfig.Routes.
+type RouteID uint32
+
 // CompiledRoute is the immutable runtime representation of a routing rule.
 type CompiledRoute struct {
 	// Name is the stable route identifier used for diagnostics and observability.

@@ -48,7 +48,7 @@ import (
 )
 
 var (
-	sinkIDs   []uint32
+	sinkIDs   []snapshot.RouteID
 	sinkRoute *snapshot.CompiledRoute
 	sinkBool  bool
 )
@@ -85,6 +85,21 @@ var benchHeaderValues = []string{
 	"gold",
 	"platinum",
 	"unranked",
+}
+
+func engineLookupIDs(e *Engine, path string) []snapshot.RouteID {
+	if e == nil {
+		return nil
+	}
+
+	var got []snapshot.RouteID
+
+	e.Lookup(path, func(candidates []snapshot.RouteID) bool {
+		got = candidates
+		return true
+	})
+
+	return got
 }
 
 func buildBenchEngine(
@@ -292,8 +307,12 @@ func BenchmarkLookupHighFanout(b *testing.B) {
 		)
 
 		b.Run("routes="+strconv.Itoa(size), func(b *testing.B) {
-			var out []uint32
-			visit := func(c []uint32) bool { out = c; return true }
+			var out []snapshot.RouteID
+
+			visit := func(c []snapshot.RouteID) bool {
+				out = c
+				return true
+			}
 
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -330,8 +349,12 @@ func BenchmarkLookupDeep(b *testing.B) {
 		)
 
 		b.Run("routes="+strconv.Itoa(size), func(b *testing.B) {
-			var out []uint32
-			visit := func(c []uint32) bool { out = c; return true }
+			var out []snapshot.RouteID
+
+			visit := func(c []snapshot.RouteID) bool {
+				out = c
+				return true
+			}
 
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -442,8 +465,12 @@ func BenchmarkLookupMixed(b *testing.B) {
 		)
 
 		b.Run("routes="+strconv.Itoa(groups*3), func(b *testing.B) {
-			var out []uint32
-			visit := func(c []uint32) bool { out = c; return true }
+			var out []snapshot.RouteID
+
+			visit := func(c []snapshot.RouteID) bool {
+				out = c
+				return true
+			}
 
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -474,8 +501,8 @@ func flatTrieStats(t *FlatTrie) (
 
 	totalChildren := 0
 
-	var walk func(nodeID uint32)
-	walk = func(nodeID uint32) {
+	var walk func(NodeID)
+	walk = func(nodeID NodeID) {
 		nodes++
 
 		node := &t.nodes[nodeID]
@@ -486,12 +513,13 @@ func flatTrieStats(t *FlatTrie) (
 			maxChildren = children
 		}
 
-		for i := uint32(0); i < uint32(node.ChildCount); i++ {
-			walk(node.FirstChild + i)
+		for i := uint16(0); i < node.ChildCount; i++ {
+			childID := node.FirstChild + NodeID(i)
+			walk(childID)
 		}
 	}
 
-	walk(0)
+	walk(NodeID(0))
 
 	avgChildren = float64(totalChildren) / float64(nodes)
 
@@ -521,7 +549,12 @@ func BenchmarkMethodAdmission(b *testing.B) {
 			headerNone,
 		)
 
-		route := engine.Route(engineLookupIDs(engine, path)[0])
+		ids := engineLookupIDs(engine, path)
+		if len(ids) == 0 {
+			b.Fatal("expected at least one route")
+		}
+
+		route := engine.Route(ids[0])
 
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()
@@ -566,7 +599,12 @@ func BenchmarkHeadersMatch(b *testing.B) {
 			tc.mode,
 		)
 
-		route := engine.Route(engineLookupIDs(engine, path)[0])
+		ids := engineLookupIDs(engine, path)
+		if len(ids) == 0 {
+			b.Fatal("expected at least one route")
+		}
+
+		route := engine.Route(ids[0])
 		preds := route.Match.Headers
 
 		reqHeaders := make([]http.Header, len(benchHeaderValues))
@@ -596,14 +634,7 @@ func BenchmarkHeadersMatch(b *testing.B) {
 }
 
 // requestMatcher adapts Engine.Lookup's visitor callback to the
-// method+header matching matchRequest needs below. It's a small value
-// type with a pointer-receiver method rather than a closure literal
-// constructed inside matchRequest, specifically so the compiler can keep
-// the receiver on the stack: neither Engine.Lookup nor FlatTrie's
-// internal lookup ever retain the visit func past the call that invokes
-// it, so escape analysis can prove requestMatcher never needs the heap —
-// which a fresh closure allocated per matchRequest call would not
-// reliably get.
+// method+header matching matchRequest needs below.
 type requestMatcher struct {
 	engine    *Engine
 	methodBit methodmask.MethodMask
@@ -611,13 +642,14 @@ type requestMatcher struct {
 	matched   *snapshot.CompiledRoute
 }
 
-func (m *requestMatcher) visit(candidateIDs []uint32) bool {
+func (m *requestMatcher) visit(candidateIDs []snapshot.RouteID) bool {
 	for _, id := range candidateIDs {
 		route := m.engine.Route(id)
 
 		if route.Match.Methods&m.methodBit == 0 {
 			continue
 		}
+
 		if !HeadersMatch(route.Match.Headers, m.headers) {
 			continue
 		}
@@ -625,6 +657,7 @@ func (m *requestMatcher) visit(candidateIDs []uint32) bool {
 		m.matched = route
 		return true
 	}
+
 	return false
 }
 
@@ -723,8 +756,6 @@ func BenchmarkRequestMatch(b *testing.B) {
 					b.Fatal("expected a route match")
 				}
 
-				// Do not create a new slice here.
-				// The benchmark must not introduce an artificial allocation.
 				sinkRoute = matched
 			})
 		}

@@ -58,22 +58,17 @@ func BuildEngine(cfg *snapshot.CompiledConfig) (*Engine, error) {
 // Lookup can't — method, headers — and return true once it has accepted
 // a route; Lookup stops as soon as that happens. See router.FlatTrie.Lookup
 // for the full contract.
-//
-// The candidates slice passed to visit is a window into the engine's own
-// arena — do not retain it past the call, and do not mutate it.
-func (e *Engine) Lookup(path string, visit func(candidates []uint32) bool) {
+func (e *Engine) Lookup(path string, visit func(candidates []snapshot.RouteID) bool) {
 	if e == nil || path == "" {
 		return
 	}
 	e.trie.Lookup(path, visit)
 }
 
-// Route returns the compiled route for a route ID returned by Lookup.
-func (e *Engine) Route(id uint32) *snapshot.CompiledRoute {
+func (e *Engine) Route(id snapshot.RouteID) *snapshot.CompiledRoute {
 	return &e.routes[id]
 }
 
-// UpstreamURL returns the parsed upstream origin for route's service.
 func (e *Engine) UpstreamURL(route *snapshot.CompiledRoute) *url.URL {
 	return e.upstreamURLs[route.Service]
 }

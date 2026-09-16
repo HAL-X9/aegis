@@ -7,7 +7,7 @@ import "github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 func BuildRadixTrie(routes []snapshot.CompiledRoute) *RadixTrie {
 	trie := &RadixTrie{}
 	for i := range routes {
-		trie.Insert(routes[i].Match.PathPrefix, uint32(i))
+		trie.Insert(routes[i].Match.PathPrefix, snapshot.RouteID(i))
 	}
 	return trie
 }

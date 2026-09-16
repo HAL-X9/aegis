@@ -11,22 +11,22 @@ import (
 // to the client) — hop-by-hop headers are connection-scoped and must never
 // be forwarded across either hop.
 func RemoveHopHeaders(headers http.Header) {
-	// The Connection header itself can name additional headers to remove,
-	// and its value may be a single token or a comma-separated list
-	// (e.g. "Connection: close, X-Custom-Hop"). Collect every named header
-	// before deleting Connection so nothing is missed.
-	for _, value := range headers.Values("Connection") {
+	// headers.Values("Connection") canonicalizes "Connection" on every
+	// call despite it already being canonical; read the map directly.
+	for _, value := range headers["Connection"] {
 		for name := range strings.SplitSeq(value, ",") {
 			name = strings.TrimSpace(name)
 			if name != "" {
+				// name comes from an arbitrary Connection header value —
+				// not guaranteed canonical, so this Del must stay as-is.
 				headers.Del(name)
 			}
 		}
 	}
-	headers.Del("Connection")
+	delete(headers, "Connection")
 
 	for _, name := range standardHopByHop {
-		headers.Del(name)
+		delete(headers, name)
 	}
 }
 

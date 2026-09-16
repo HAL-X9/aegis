@@ -50,12 +50,12 @@ func ExecuteMutations(h http.Header, plan *snapshot.CompiledHeadersPlan) {
 
 		switch op.Op {
 		case snapshot.HeaderOpRemove:
-			h.Del(name)
+			delete(h, name)
 		case snapshot.HeaderOpSet:
-			h.Set(name, op.Value)
+			h[name] = []string{op.Value}
 		case snapshot.HeaderOpAddIfAbsent:
-			if h.Get(name) == "" {
-				h.Set(name, op.Value)
+			if _, exists := h[name]; !exists {
+				h[name] = []string{op.Value}
 			}
 		}
 	}

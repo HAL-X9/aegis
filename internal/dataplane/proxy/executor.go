@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"io"
-	"maps"
 	"net/http"
 	"net/url"
 	"sync"
@@ -237,7 +236,10 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	policy.ExecuteMutations(resp.Header, &matchedRoute.Policies.Headers.Response)
 	request.RemoveHopHeaders(resp.Header)
-	maps.Copy(w.Header(), resp.Header)
+	respHeader := w.Header()
+	for name, values := range resp.Header {
+		respHeader[name] = values
+	}
 
 	w.WriteHeader(resp.StatusCode)
 

@@ -1,39 +1,36 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-APP_NAME       := avito-kitchen
-BIN_DIR        := bin
-CMD_DIR        := ./cmd
-MIGRATIONS_DIR := migrations
-
-DB_DSN ?= postgres://avito_kitchen:avito_kitchen@localhost:5432/avito_kitchen?sslmode=disable
-
+APP_NAME := aegis
+BIN_DIR := bin
+CMD_DIR := ./cmd
 DOCKER_COMPOSE := docker compose
 
 .PHONY: help
-help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
+help: ## Show available commands
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-## --- Build & run ------------------------------------------------------------
-
 .PHONY: build
-build: ## Build the binary into bin/
+build: ## Build the Aegis binary
 	CGO_ENABLED=0 go build -o $(BIN_DIR)/$(APP_NAME) $(CMD_DIR)
 
 .PHONY: run
-run: ## Run the service locally (requires a reachable Postgres)
-	go run $(CMD_DIR)
+run: ## Run Aegis locally
+	go run $(CMD_DIR) \
+		-config configs/aegis.yaml \
+		-routes configs/gateway.yaml
 
 .PHONY: clean
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)
 
-## --- Quality ------------------------------------------------------------
-
 .PHONY: fmt
-fmt: ## Format code and run go vet
-	gofmt -l -w .
+fmt: ## Format Go source files
+	gofmt -w .
+
+.PHONY: vet
+vet: ## Run go vet
 	go vet ./...
 
 .PHONY: lint
@@ -41,45 +38,33 @@ lint: ## Run golangci-lint
 	golangci-lint run ./...
 
 .PHONY: test
-test: ## Run tests with race detector and coverage
-	go test ./... -race -cover
+test: ## Run tests
+	go test ./...
 
-## --- Database ------------------------------------------------------------
+.PHONY: test-race
+test-race: ## Run tests with race detector
+	go test ./... -race
 
-.PHONY: migrate-up
-migrate-up: ## Apply all pending migrations
-	goose -dir $(MIGRATIONS_DIR) postgres "$(DB_DSN)" up
+.PHONY: coverage
+coverage: ## Run tests with coverage
+	go test ./... -cover
 
-.PHONY: migrate-down
-migrate-down: ## Roll back the last migration
-	goose -dir $(MIGRATIONS_DIR) postgres "$(DB_DSN)" down
-
-.PHONY: migrate-status
-migrate-status: ## Show current migration status
-	goose -dir $(MIGRATIONS_DIR) postgres "$(DB_DSN)" status
-
-.PHONY: migrate-create
-migrate-create: ## Create a new SQL migration (usage: make migrate-create name=add_orders_table)
-	goose -dir $(MIGRATIONS_DIR) create $(name) sql
-
-.PHONY: sqlc
-sqlc: ## Regenerate typed DB access code from SQL
-	sqlc generate
-
-## --- Docker Compose ------------------------------------------------------------
+.PHONY: bench
+bench: ## Run router benchmarks
+	go test ./internal/dataplane/router/ -bench . -benchmem
 
 .PHONY: up
-up: ## Build and start the full stack
+up: ## Build and start Docker stack
 	$(DOCKER_COMPOSE) up -d --build
 
 .PHONY: down
-down: ## Stop the stack
+down: ## Stop Docker stack
 	$(DOCKER_COMPOSE) down
 
 .PHONY: logs
-logs: ## Follow logs from all services
+logs: ## Follow Docker logs
 	$(DOCKER_COMPOSE) logs -f
 
 .PHONY: ps
-ps: ## Show running services
+ps: ## Show Docker services
 	$(DOCKER_COMPOSE) ps

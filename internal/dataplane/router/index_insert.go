@@ -1,6 +1,6 @@
 package router
 
-import "github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+import "github.com/HAL-X9/aegis/internal/snapshot"
 
 // RadixNode is a build-time radix trie node. It exists only while the
 // control plane constructs the routing table; the request hot path never

@@ -6,7 +6,7 @@ import (
 	"github.com/HAL-X9/aegis/internal/controlplane/compile"
 	"github.com/HAL-X9/aegis/internal/controlplane/normalize"
 	"github.com/HAL-X9/aegis/internal/controlplane/schema"
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
 // Build compiles the gateway configuration into a runtime snapshot.
@@ -35,7 +35,14 @@ func Build(config *schema.GatewayConfig) (*snapshot.CompiledConfig, error) {
 		return nil, fmt.Errorf("build compiled configuration: service compilation failed: %w", err)
 	}
 
-	routes, err := compile.Routes(serviceIDs, normalizedRoutes, normalizedPolicies)
+	headerIDs := compile.NewHeaderRegistryBuilder()
+
+	routes, err := compile.Routes(
+		headerIDs,
+		serviceIDs,
+		normalizedRoutes,
+		normalizedPolicies,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("build compiled configuration: route build failed: %w", err)
 	}
@@ -46,8 +53,9 @@ func Build(config *schema.GatewayConfig) (*snapshot.CompiledConfig, error) {
 	}
 
 	return &snapshot.CompiledConfig{
-		Services: services,
-		Routes:   routes,
-		Policies: *policies,
+		Services:    services,
+		Routes:      routes,
+		Policies:    *policies,
+		HeaderNames: headerIDs.Registry(),
 	}, nil
 }

@@ -14,4 +14,10 @@ type CompiledConfig struct {
 
 	// Policies contains reusable compiled policy plans.
 	Policies CompiledPolicies
+
+	// HeaderNames resolves dynamic HeaderIDs assigned during compilation.
+	//
+	// The registry is immutable after publication and is shared by the
+	// routing engine for the lifetime of this compiled configuration.
+	HeaderNames HeaderRegistry
 }

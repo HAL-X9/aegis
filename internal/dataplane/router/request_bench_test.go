@@ -44,7 +44,7 @@ import (
 	"testing"
 
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
 var (

@@ -4,15 +4,17 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
 // Engine encapsulates the compiled, pointer-free routing structures used
-// on the request hot path. Lookup, Route, and UpstreamURL never allocate.
+// on the request hot path. Lookup, Route, UpstreamURL, and HeaderNames
+// never allocate.
 type Engine struct {
 	trie         *FlatTrie
 	routes       []snapshot.CompiledRoute
 	upstreamURLs []*url.URL // one entry per service, indexed by ServiceID
+	headerNames  snapshot.HeaderRegistry
 }
 
 // BuildEngine compiles a control-plane snapshot into a request-ready
@@ -49,6 +51,7 @@ func BuildEngine(cfg *snapshot.CompiledConfig) (*Engine, error) {
 		trie:         trie,
 		routes:       cfg.Routes,
 		upstreamURLs: upstreamURLs,
+		headerNames:  cfg.HeaderNames,
 	}, nil
 }
 
@@ -71,4 +74,12 @@ func (e *Engine) Route(id snapshot.RouteID) *snapshot.CompiledRoute {
 
 func (e *Engine) UpstreamURL(route *snapshot.CompiledRoute) *url.URL {
 	return e.upstreamURLs[route.Service]
+}
+
+// HeaderNames returns the registry that resolves dynamic HeaderIDs
+// (snapshot.HeaderDynamicStart and above) referenced by any route's
+// header policy — see internal/dataplane/policy.ExecuteMutations.
+// Well-known headers never need it.
+func (e *Engine) HeaderNames() *snapshot.HeaderRegistry {
+	return &e.headerNames
 }

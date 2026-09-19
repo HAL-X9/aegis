@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
 // NodeID indexes FlatTrie.nodes. Never comparable with or convertible

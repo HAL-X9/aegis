@@ -3,10 +3,17 @@ package policy
 import (
 	"net/http"
 
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
-func resolveHeaderName(id snapshot.HeaderID) string {
+// resolveHeaderName maps a HeaderID back to its wire name.
+//
+// Well-known IDs are a plain branch — no allocation, no lookup. Anything
+// >= snapshot.HeaderDynamicStart is a custom header assigned during
+// compilation (see internal/controlplane/compile.HeaderRegistryBuilder)
+// and is resolved through names, the registry published alongside the
+// route it belongs to (router.Engine.HeaderNames).
+func resolveHeaderName(id snapshot.HeaderID, names *snapshot.HeaderRegistry) string {
 	switch id {
 	case snapshot.HeaderHost:
 		return "Host"
@@ -31,11 +38,22 @@ func resolveHeaderName(id snapshot.HeaderID) string {
 	case snapshot.HeaderXXSSProtection:
 		return "X-Xss-Protection"
 	default:
-		return ""
+		i := int(id) - int(snapshot.HeaderDynamicStart)
+		if names == nil || i < 0 || i >= len(names.Names) {
+			return ""
+		}
+		return string(names.Names[i])
 	}
 }
 
-func ExecuteMutations(h http.Header, plan *snapshot.CompiledHeadersPlan) {
+// ExecuteMutations applies plan's header operations, in compiled order
+// (remove, then set, then add-if-absent), to h.
+//
+// names resolves any dynamic (non-well-known) header ID plan references;
+// pass router.Engine.HeaderNames() for the snapshot the route was
+// compiled from. names may be nil if plan is known to reference only
+// well-known headers.
+func ExecuteMutations(h http.Header, plan *snapshot.CompiledHeadersPlan, names *snapshot.HeaderRegistry) {
 	if plan == nil || len(plan.Ops) == 0 {
 		return
 	}
@@ -43,7 +61,7 @@ func ExecuteMutations(h http.Header, plan *snapshot.CompiledHeadersPlan) {
 	for i := range plan.Ops {
 		op := &plan.Ops[i]
 
-		name := resolveHeaderName(op.HeaderID)
+		name := resolveHeaderName(op.HeaderID, names)
 		if name == "" {
 			continue
 		}

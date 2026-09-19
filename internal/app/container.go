@@ -53,8 +53,18 @@ func Bootstrap(cfg *config.Runtime, manifest *schema.GatewayConfig) (*Dependenci
 	}
 
 	rateLimiters := policy.NewRateLimiterSet(compiled.Policies.RateLimits)
+
 	upstreamTransport := newUpstreamTransport(&cfg.UpstreamTransport)
-	executor := proxy.NewExecutor(engine, rateLimiters, upstreamTransport)
+
+	executor, err := proxy.NewExecutor(upstreamTransport)
+	if err != nil {
+		return nil, fmt.Errorf("build proxy executor: %w", err)
+	}
+
+	executor.Publish(&proxy.View{
+		Engine:   engine,
+		Limiters: rateLimiters,
+	})
 
 	metricsCollector := metrics.NewMetrics(prometheus.DefaultRegisterer)
 	healthSvc := health.NewHealth()
@@ -63,6 +73,7 @@ func Bootstrap(cfg *config.Runtime, manifest *schema.GatewayConfig) (*Dependenci
 	if err != nil {
 		return nil, fmt.Errorf("build system HTTP server: %w", err)
 	}
+
 	publicHTTP, err := edgepublic.NewPublicServer(cfg, executor, metricsCollector)
 	if err != nil {
 		return nil, fmt.Errorf("build public HTTP server: %w", err)

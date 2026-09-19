@@ -3,7 +3,7 @@ package router
 import (
 	"testing"
 
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
 // lookupViaFlatten flattens the build-time trie and performs the lookup

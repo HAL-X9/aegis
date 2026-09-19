@@ -1,17 +1,19 @@
 package proxy
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"sync"
+	"sync/atomic"
 
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/request"
 	"github.com/HAL-X9/aegis/internal/dataplane/routelabel"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
+	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
 // Executor implements an HTTP reverse proxy handler backed by a routing engine.
@@ -19,15 +21,15 @@ import (
 // It resolves incoming requests against a routing index and forwards matched
 // requests to upstream services using the configured RoundTripper.
 type Executor struct {
-	// engine provides fast path-based route lookup.
-	engine *router.Engine
-
-	// rateLimiters enforces the per-route rate-limit policy compiled into
-	// the snapshot.
-	rateLimiters *policy.RateLimiterSet
+	// view holds the currently published View (routing engine + rate
+	// limiters), swapped atomically by Publish. Load is safe for
+	// concurrent use without a mutex on the request path.
+	view atomic.Pointer[View]
 
 	// transport is responsible for executing outbound HTTP requests.
-	// It must be non-nil and safe for concurrent use.
+	// Set once at construction; never swapped. Must be non-nil and safe
+	// for concurrent use — NewExecutor enforces this so ServeHTTP doesn't
+	// have to check it on every request.
 	transport http.RoundTripper
 }
 
@@ -58,19 +60,41 @@ var upstreamRequestPool = sync.Pool{
 	New: func() any { return new(upstreamRequest) },
 }
 
-// NewExecutor creates a new Executor instance.
-// engine, rateLimiters, and transport are all required for correct operation.
-func NewExecutor(engine *router.Engine, rateLimiters *policy.RateLimiterSet, transport http.RoundTripper) *Executor {
-	return &Executor{
-		engine:       engine,
-		rateLimiters: rateLimiters,
-		transport:    transport,
+// NewExecutor creates an Executor bound to transport, which must be
+// non-nil and safe for concurrent use — that's a constructor invariant,
+// checked once here instead of on every request.
+//
+// The returned Executor serves 503 for every request until Publish is
+// called at least once; call Publish with the initial View before handing
+// the Executor to a server.
+func NewExecutor(transport http.RoundTripper) (*Executor, error) {
+	if transport == nil {
+		return nil, fmt.Errorf("proxy: transport must not be nil")
 	}
+	return &Executor{transport: transport}, nil
+}
+
+// Publish atomically swaps in a new View. Callers build the complete View
+// (Engine + Limiters) before calling Publish — there is no partial or
+// in-place update, so a request mid-flight always sees either the whole
+// old View or the whole new one, never a mix.
+func (executor *Executor) Publish(v *View) {
+	executor.view.Store(v)
 }
 
 // buildUpstreamRequest builds the outbound request for route, carrying
 // over r's method, headers, body, and context, with the path/query
 // rewritten onto the route's upstream origin.
+//
+// Two corrections versus a naive `*out = *r`:
+//   - out.Header is r.Header.Clone(), not a shared reference. `*out = *r`
+//     copies the Header map header, not its contents, so without cloning,
+//     any header mutation on the outbound request (see policy.ExecuteMutations
+//     below) would silently mutate the inbound request's headers too.
+//   - out.Host is explicitly set to the upstream's host. net/http prefers
+//     Request.Host over Request.URL.Host when sending a request; left
+//     unset, it carries over the original client's Host header, and any
+//     upstream that routes by Host would see the wrong one.
 //
 // The req+url pair is served from upstreamRequestPool only when transport
 // is verified to be the standard library's *http.Transport — the only
@@ -81,11 +105,13 @@ func NewExecutor(engine *router.Engine, rateLimiters *policy.RateLimiterSet, tra
 // with a different RoundTripper.
 //
 // release must be called exactly once when req is no longer needed.
-func (executor *Executor) buildUpstreamRequest(r *http.Request, route *snapshot.CompiledRoute) (req *http.Request, release func()) {
-	upstreamURL := *executor.engine.UpstreamURL(route)
+func (executor *Executor) buildUpstreamRequest(view *View, r *http.Request, route *snapshot.CompiledRoute) (req *http.Request, release func()) {
+	upstreamURL := *view.Engine.UpstreamURL(route)
 	upstreamURL.Path = r.URL.Path
 	upstreamURL.RawPath = r.URL.RawPath
 	upstreamURL.RawQuery = r.URL.RawQuery
+
+	header := r.Header.Clone()
 
 	if _, poolable := executor.transport.(*http.Transport); poolable {
 		combo := upstreamRequestPool.Get().(*upstreamRequest)
@@ -96,15 +122,17 @@ func (executor *Executor) buildUpstreamRequest(r *http.Request, route *snapshot.
 		// trace info) without an extra WithContext allocation: WithContext
 		// just does this same copy internally and hands back a *new* heap
 		// object, so doing it ourselves into combo.req is strictly one
-		// allocation cheaper.
+		// allocation cheaper. Header and Host are then overwritten below.
 		combo.req = *r
 		combo.req.URL = &combo.url
+		combo.req.Host = upstreamURL.Host
+		combo.req.Header = header
 		// RequestURI is populated by net/http for incoming server requests
 		// and must be empty on outgoing client requests — Transport.RoundTrip
 		// rejects it otherwise ("Request.RequestURI can't be set in client
-		// requests"). Everything else copied from *r (Header, Body,
-		// ContentLength, TLS, etc.) is either correct as-is for a proxied
-		// request or harmless/ignored by the client Transport.
+		// requests"). Everything else copied from *r (Body, ContentLength,
+		// TLS, etc.) is either correct as-is for a proxied request or
+		// harmless/ignored by the client Transport.
 		combo.req.RequestURI = ""
 
 		return &combo.req, func() { upstreamRequestPool.Put(combo) }
@@ -113,6 +141,8 @@ func (executor *Executor) buildUpstreamRequest(r *http.Request, route *snapshot.
 	out := new(http.Request)
 	*out = *r
 	out.URL = &upstreamURL
+	out.Host = upstreamURL.Host
+	out.Header = header
 	out.RequestURI = ""
 	return out, func() {}
 }
@@ -121,8 +151,7 @@ func (executor *Executor) buildUpstreamRequest(r *http.Request, route *snapshot.
 // proxies it to a matching upstream service.
 //
 // Behavior:
-//   - returns 503 if the routing engine is unavailable
-//   - returns 500 if the transport is unavailable
+//   - returns 503 if no View has been published yet
 //   - returns 404 if no route matches the request path
 //   - returns 405 if no route supports the request method
 //   - returns 429 if the matched route's rate-limit policy rejects the request
@@ -133,18 +162,12 @@ func (executor *Executor) buildUpstreamRequest(r *http.Request, route *snapshot.
 // Once a route is matched, ServeHTTP reports the route's identifier via
 // routelabel so the metrics middleware can label request metrics by route
 // instead of by raw path (see internal/dataplane/routelabel). Requests that
-// never reach a route match (503/500/404/405 above) are left unlabeled and
+// never reach a route match (503/404/405 above) are left unlabeled and
 // fall back to "unmatched" in the recorded metrics.
 func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Validate routing engine availability before request processing.
-	if executor.engine == nil {
+	view := executor.view.Load()
+	if view == nil {
 		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	// Validate transport availability required for upstream communication.
-	if executor.transport == nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -168,11 +191,11 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		matchedRoute  *snapshot.CompiledRoute
 	)
 
-	executor.engine.Lookup(r.URL.Path, func(candidateIDs []snapshot.RouteID) bool {
+	view.Engine.Lookup(r.URL.Path, func(candidateIDs []snapshot.RouteID) bool {
 		pathMatched = true
 
 		for _, id := range candidateIDs {
-			route := executor.engine.Route(id)
+			route := view.Engine.Route(id)
 			if route.Match.Methods&methodBit == 0 {
 				continue
 			}
@@ -216,15 +239,27 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	routelabel.FromContext(r.Context()).SetRoutePattern(routeLabel)
 
-	if !executor.rateLimiters.Allow(matchedRoute) {
+	if !view.Limiters.Allow(matchedRoute) {
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
 	}
 
-	req, release := executor.buildUpstreamRequest(r, matchedRoute)
+	req, release := executor.buildUpstreamRequest(view, r, matchedRoute)
 	defer release()
 
-	policy.ExecuteMutations(req.Header, &matchedRoute.Policies.Headers.Request)
+	headerNames := view.Engine.HeaderNames()
+
+	// Build the complete gateway-generated forwarding information before
+	// applying the final request header policy. This ordering is
+	// intentional: a policy such as `remove: X-Forwarded-For` must be able
+	// to remove both a client-supplied value and an X-Forwarded-For value
+	// generated by the gateway itself.
+	request.SetForwardedHeaders(req.Header, r)
+
+	policy.ExecuteMutations(req.Header, &matchedRoute.Policies.Headers.Request, headerNames)
+
+	// Hop-by-hop headers must never reach the upstream, regardless of
+	// whether they came from the client, a forwarding helper, or a policy.
 	request.RemoveHopHeaders(req.Header)
 
 	resp, err := executor.transport.RoundTrip(req)
@@ -234,7 +269,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	policy.ExecuteMutations(resp.Header, &matchedRoute.Policies.Headers.Response)
+	policy.ExecuteMutations(resp.Header, &matchedRoute.Policies.Headers.Response, headerNames)
 	request.RemoveHopHeaders(resp.Header)
 	respHeader := w.Header()
 	for name, values := range resp.Header {

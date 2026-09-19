@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
+	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -60,11 +60,63 @@ func testConfig(routes ...snapshot.CompiledRoute) *snapshot.CompiledConfig {
 	}
 }
 
+func newTestExecutor(
+	t *testing.T,
+	engine *router.Engine,
+	transport http.RoundTripper,
+) *Executor {
+	t.Helper()
+
+	exec, err := NewExecutor(transport)
+	if err != nil {
+		t.Fatalf("NewExecutor failed: %v", err)
+	}
+
+	exec.Publish(&View{
+		Engine:   engine,
+		Limiters: noRateLimits(),
+	})
+
+	return exec
+}
+
+func TestNewExecutor(t *testing.T) {
+	t.Run("rejects nil transport", func(t *testing.T) {
+		exec, err := NewExecutor(nil)
+
+		if err == nil {
+			t.Fatal("expected error for nil transport")
+		}
+
+		if exec != nil {
+			t.Fatal("expected nil executor on constructor error")
+		}
+	})
+
+	t.Run("accepts non-nil transport", func(t *testing.T) {
+		transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return nil, errors.New("not called")
+		})
+
+		exec, err := NewExecutor(transport)
+		if err != nil {
+			t.Fatalf("NewExecutor failed: %v", err)
+		}
+
+		if exec == nil {
+			t.Fatal("expected non-nil executor")
+		}
+	})
+}
+
 func TestExecutor(t *testing.T) {
-	t.Run("returns 503 when engine is nil", func(t *testing.T) {
-		exec := NewExecutor(nil, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	t.Run("returns 503 before a view is published", func(t *testing.T) {
+		exec, err := NewExecutor(roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
+		if err != nil {
+			t.Fatalf("NewExecutor failed: %v", err)
+		}
 
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/api", nil)
@@ -72,31 +124,11 @@ func TestExecutor(t *testing.T) {
 		exec.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusServiceUnavailable {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
-		}
-	})
-
-	t.Run("returns 500 when transport is nil", func(t *testing.T) {
-		engine := buildTestEngine(t, testConfig(
-			snapshot.CompiledRoute{
-				Name:    "api",
-				Service: 0,
-				Match: snapshot.CompiledMatch{
-					PathPrefix: "/api",
-					Methods:    methodmask.MethodAll,
-				},
-			},
-		))
-
-		exec := NewExecutor(engine, noRateLimits(), nil)
-
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api", nil)
-
-		exec.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusInternalServerError {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+			t.Fatalf(
+				"status = %d, want %d",
+				rec.Code,
+				http.StatusServiceUnavailable,
+			)
 		}
 	})
 
@@ -112,7 +144,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -122,7 +154,11 @@ func TestExecutor(t *testing.T) {
 		exec.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusNotFound {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+			t.Fatalf(
+				"status = %d, want %d",
+				rec.Code,
+				http.StatusNotFound,
+			)
 		}
 	})
 
@@ -138,7 +174,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -148,7 +184,11 @@ func TestExecutor(t *testing.T) {
 		exec.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusMethodNotAllowed {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+			t.Fatalf(
+				"status = %d, want %d",
+				rec.Code,
+				http.StatusMethodNotAllowed,
+			)
 		}
 	})
 
@@ -169,7 +209,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -179,7 +219,11 @@ func TestExecutor(t *testing.T) {
 		exec.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusMethodNotAllowed {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+			t.Fatalf(
+				"status = %d, want %d",
+				rec.Code,
+				http.StatusMethodNotAllowed,
+			)
 		}
 	})
 
@@ -201,7 +245,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -212,7 +256,11 @@ func TestExecutor(t *testing.T) {
 		exec.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusNotFound {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+			t.Fatalf(
+				"status = %d, want %d",
+				rec.Code,
+				http.StatusNotFound,
+			)
 		}
 	})
 
@@ -228,7 +276,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("dial failure")
 		}))
 
@@ -238,7 +286,11 @@ func TestExecutor(t *testing.T) {
 		exec.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusBadGateway {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadGateway)
+			t.Fatalf(
+				"status = %d, want %d",
+				rec.Code,
+				http.StatusBadGateway,
+			)
 		}
 	})
 
@@ -256,7 +308,7 @@ func TestExecutor(t *testing.T) {
 
 		var gotURL string
 
-		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			gotURL = r.URL.String()
 
 			return &http.Response{
@@ -276,14 +328,19 @@ func TestExecutor(t *testing.T) {
 		exec.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+			t.Fatalf(
+				"status = %d, want %d",
+				rec.Code,
+				http.StatusOK,
+			)
 		}
 
-		if gotURL != "http://upstream:8080/api/profile?id=123&sort=name" {
+		wantURL := "http://upstream:8080/api/profile?id=123&sort=name"
+		if gotURL != wantURL {
 			t.Fatalf(
 				"upstream URL = %q, want %q",
 				gotURL,
-				"http://upstream:8080/api/profile?id=123&sort=name",
+				wantURL,
 			)
 		}
 	})
@@ -318,15 +375,15 @@ func TestExecutor(t *testing.T) {
 		var gotURL string
 		var gotBody string
 
-		exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			gotMethod = r.Method
 			gotURL = r.URL.String()
 
-			b, err := io.ReadAll(r.Body)
+			body, err := io.ReadAll(r.Body)
 			if err != nil {
 				return nil, err
 			}
-			gotBody = string(b)
+			gotBody = string(body)
 
 			return &http.Response{
 				StatusCode: http.StatusCreated,
@@ -345,15 +402,27 @@ func TestExecutor(t *testing.T) {
 		exec.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusCreated {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusCreated)
+			t.Fatalf(
+				"status = %d, want %d",
+				rec.Code,
+				http.StatusCreated,
+			)
 		}
 
 		if rec.Body.String() != "upstream ok" {
-			t.Fatalf("body = %q, want %q", rec.Body.String(), "upstream ok")
+			t.Fatalf(
+				"body = %q, want %q",
+				rec.Body.String(),
+				"upstream ok",
+			)
 		}
 
 		if gotMethod != http.MethodGet {
-			t.Fatalf("method = %q, want %q", gotMethod, http.MethodGet)
+			t.Fatalf(
+				"method = %q, want %q",
+				gotMethod,
+				http.MethodGet,
+			)
 		}
 
 		if gotURL != "http://upstream:9090/api" {
@@ -361,47 +430,57 @@ func TestExecutor(t *testing.T) {
 		}
 
 		if gotBody != "payload" {
-			t.Fatalf("body = %q, want %q", gotBody, "payload")
+			t.Fatalf(
+				"body = %q, want %q",
+				gotBody,
+				"payload",
+			)
+		}
+	})
+
+	t.Run("strips hop-by-hop headers from upstream response", func(t *testing.T) {
+		engine := buildTestEngine(t, testConfig(
+			snapshot.CompiledRoute{
+				Name:    "api",
+				Service: 0,
+				Match: snapshot.CompiledMatch{
+					PathPrefix: "/api",
+					Methods:    methodmask.MethodAll,
+				},
+			},
+		))
+
+		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			h := make(http.Header)
+			h.Set("Connection", "close")
+			h.Set("Transfer-Encoding", "chunked")
+			h.Set("Content-Type", "text/plain")
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("ok")),
+				Header:     h,
+			}, nil
+		}))
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api", nil)
+
+		exec.ServeHTTP(rec, req)
+
+		if got := rec.Header().Get("Connection"); got != "" {
+			t.Errorf("Connection leaked to client: %q", got)
 		}
 
-		t.Run("strips hop-by-hop headers from upstream response", func(t *testing.T) {
-			engine := buildTestEngine(t, testConfig(
-				snapshot.CompiledRoute{
-					Name:    "api",
-					Service: 0,
-					Match: snapshot.CompiledMatch{
-						PathPrefix: "/api",
-						Methods:    methodmask.MethodAll,
-					},
-				},
-			))
+		if got := rec.Header().Get("Transfer-Encoding"); got != "" {
+			t.Errorf("Transfer-Encoding leaked to client: %q", got)
+		}
 
-			exec := NewExecutor(engine, noRateLimits(), roundTripFunc(func(r *http.Request) (*http.Response, error) {
-				h := make(http.Header)
-				h.Set("Connection", "close")
-				h.Set("Transfer-Encoding", "chunked")
-				h.Set("Content-Type", "text/plain")
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(strings.NewReader("ok")),
-					Header:     h,
-				}, nil
-			}))
-
-			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/api", nil)
-
-			exec.ServeHTTP(rec, req)
-
-			if got := rec.Header().Get("Connection"); got != "" {
-				t.Errorf("Connection leaked to client: %q", got)
-			}
-			if got := rec.Header().Get("Transfer-Encoding"); got != "" {
-				t.Errorf("Transfer-Encoding leaked to client: %q", got)
-			}
-			if got := rec.Header().Get("Content-Type"); got != "text/plain" {
-				t.Errorf("Content-Type = %q, want preserved", got)
-			}
-		})
+		if got := rec.Header().Get("Content-Type"); got != "text/plain" {
+			t.Errorf(
+				"Content-Type = %q, want preserved",
+				got,
+			)
+		}
 	})
 }

@@ -5,33 +5,22 @@ import (
 	"sort"
 
 	"github.com/HAL-X9/aegis/internal/controlplane/ir"
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/snapshot"
 	"golang.org/x/time/rate"
 )
 
-// Policies compiles the normalized IR policies into a highly optimized,
-// allocation-free snapshot ready for the data plane hot-path.
+// Policies compiles the normalized IR rate-limit policies into a snapshot
+// ready for the data-plane hot path.
+//
+// Named header policies are intentionally not compiled here. A route
+// references header policies by name only so they can be merged inline
+// onto that route's own CompiledRoute.Policies.Headers (see
+// compileRoutePolicyHeaders in routes_compiler.go); nothing on the hot
+// path looks a header plan up by policy name, so a second, policy-keyed
+// copy is never built. See snapshot.CompiledPolicies's doc comment.
 func Policies(policies *ir.Policies) (*snapshot.CompiledPolicies, error) {
 	if policies == nil {
 		return nil, fmt.Errorf("compile policies configuration: config is nil")
-	}
-
-	policyNames := make([]string, 0, len(policies.Headers))
-	for name := range policies.Headers {
-		policyNames = append(policyNames, name)
-	}
-	sort.Strings(policyNames)
-
-	compiledHeaders := make([]snapshot.CompiledHeaders, 0, len(policyNames))
-	for _, name := range policyNames {
-		headers := policies.Headers[name]
-
-		compiled, err := compileRouteHeaders(&headers)
-		if err != nil {
-			return nil, fmt.Errorf("compile headers policy %q: %w", name, err)
-		}
-
-		compiledHeaders = append(compiledHeaders, compiled)
 	}
 
 	names := sortedRateLimitNames(policies)
@@ -45,115 +34,61 @@ func Policies(policies *ir.Policies) (*snapshot.CompiledPolicies, error) {
 	}
 
 	return &snapshot.CompiledPolicies{
-		Headers:    compiledHeaders,
 		RateLimits: compiledRateLimits,
 	}, nil
 }
 
-// resolveHeaderID maps standard HTTP header string names to their
-// strongly-typed numeric IDs for O(1) evaluation in the runtime.
-func resolveHeaderID(name string) (snapshot.HeaderID, error) {
-	switch name {
-	case "Host":
-		return snapshot.HeaderHost, nil
-	case "Content-Type":
-		return snapshot.HeaderContentType, nil
-	case "Content-Length":
-		return snapshot.HeaderContentLength, nil
-	case "Authorization":
-		return snapshot.HeaderAuthorization, nil
-	case "X-Forwarded-For":
-		return snapshot.HeaderXForwardedFor, nil
-	case "X-Forwarded-Proto":
-		return snapshot.HeaderXForwardedProto, nil
-	case "X-Request-ID", "X-Request-Id":
-		return snapshot.HeaderXRequestID, nil
-	case "Server":
-		return snapshot.HeaderServer, nil
-	case "X-Content-Type-Options":
-		return snapshot.HeaderXContentTypeOptions, nil
-	case "X-Frame-Options":
-		return snapshot.HeaderXFrameOptions, nil
-	case "X-XSS-Protection", "X-Xss-Protection":
-		return snapshot.HeaderXXSSProtection, nil
-	default:
-		return snapshot.HeaderUnknown, fmt.Errorf("unsupported header %q", name)
-	}
-}
-
-// compileRouteHeaders compiles request and response header mutation rules
-// into a unified snapshot format. Header values are copied verbatim from
-// the IR into the compiled instruction — there is no shared byte blob to
-// build, so this takes no builder argument.
-func compileRouteHeaders(headers *ir.Headers) (snapshot.CompiledHeaders, error) {
+// compileRouteHeaders compiles a route's merged request/response header
+// mutation rules into snapshot form, resolving each header name to an ID
+// through headerIDs (see headers_registry.go).
+func compileRouteHeaders(headerIDs *HeaderRegistryBuilder, headers *ir.Headers) snapshot.CompiledHeaders {
 	if headers == nil {
-		return snapshot.CompiledHeaders{}, nil
-	}
-
-	requestOps, err := compileHeaderOps(&headers.Request)
-	if err != nil {
-		return snapshot.CompiledHeaders{}, fmt.Errorf("compile request header operations: %w", err)
-	}
-	responseOps, err := compileHeaderOps(&headers.Response)
-	if err != nil {
-		return snapshot.CompiledHeaders{}, fmt.Errorf("compile response header operations: %w", err)
+		return snapshot.CompiledHeaders{}
 	}
 
 	return snapshot.CompiledHeaders{
-		Request:  snapshot.CompiledHeadersPlan{Ops: requestOps},
-		Response: snapshot.CompiledHeadersPlan{Ops: responseOps},
-	}, nil
+		Request:  snapshot.CompiledHeadersPlan{Ops: compileHeaderOps(headerIDs, &headers.Request)},
+		Response: snapshot.CompiledHeadersPlan{Ops: compileHeaderOps(headerIDs, &headers.Response)},
+	}
 }
 
-// compileHeaderOps transforms normalized operations into compact instructions.
-func compileHeaderOps(ops *ir.HeadersOps) ([]snapshot.HeaderInstruction, error) {
+// compileHeaderOps transforms normalized operations into compact
+// instructions, in the fixed remove/set/add-if-absent order that
+// snapshot.CompiledHeadersPlan documents.
+func compileHeaderOps(headerIDs *HeaderRegistryBuilder, ops *ir.HeadersOps) []snapshot.HeaderInstruction {
 	if ops == nil {
-		return nil, nil
+		return nil
 	}
 
 	estimatedOps := len(ops.Remove) + len(ops.Set) + len(ops.Add)
 	if estimatedOps == 0 {
-		return nil, nil
+		return nil
 	}
 
 	instructions := make([]snapshot.HeaderInstruction, 0, estimatedOps)
 
 	for _, name := range ops.Remove {
-		headerID, err := resolveHeaderID(name)
-		if err != nil {
-			return nil, err
-		}
 		instructions = append(instructions, snapshot.HeaderInstruction{
-			HeaderID: headerID,
+			HeaderID: headerIDs.resolve(name),
 			Op:       snapshot.HeaderOpRemove,
 		})
 	}
-
 	for _, name := range sortedStringMapKeys(ops.Set) {
-		headerID, err := resolveHeaderID(name)
-		if err != nil {
-			return nil, err
-		}
 		instructions = append(instructions, snapshot.HeaderInstruction{
-			HeaderID: headerID,
+			HeaderID: headerIDs.resolve(name),
 			Op:       snapshot.HeaderOpSet,
 			Value:    ops.Set[name],
 		})
 	}
-
 	for _, name := range sortedStringMapKeys(ops.Add) {
-		headerID, err := resolveHeaderID(name)
-		if err != nil {
-			return nil, err
-		}
 		instructions = append(instructions, snapshot.HeaderInstruction{
-			HeaderID: headerID,
+			HeaderID: headerIDs.resolve(name),
 			Op:       snapshot.HeaderOpAddIfAbsent,
 			Value:    ops.Add[name],
 		})
 	}
 
-	return instructions, nil
+	return instructions
 }
 
 func sortedStringMapKeys(values map[string]string) []string {

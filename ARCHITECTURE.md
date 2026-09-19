@@ -36,7 +36,7 @@ Client ──▶ edge/public ──▶ middleware chain ──▶ proxy.Executor
 7. Failure modes are explicit and mapped to standard status codes: `503` (engine unavailable), `404` (no route), `405` (route exists, method doesn't), `502` (upstream failure).
 
 ## Key design decisions
-````
+
 **Radix trie routing, not a map.** Route lookup uses a compressed radix trie supporting static, `:param`, and `*wildcard` segments, matched with static > param > wildcard priority. Benchmarks show **0 allocations and sub-100ns lookups from 16 to 32,768 routes** — the tree stays shallow because of prefix compression, so lookup cost grows with path depth, not route count. Insertion (setup-time only) favors correctness over allocation avoidance; lookup (request-time) is optimized for zero allocations, since it runs on every request.
 
 **Method matching via bitmask, not string comparison.** `contracts/methodmask` maps each HTTP method to a bit; route admission is a single `AND` against a precomputed mask instead of iterating and string-comparing allowed methods per request.

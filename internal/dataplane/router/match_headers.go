@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
 // HeadersMatch reports whether all header predicates are satisfied

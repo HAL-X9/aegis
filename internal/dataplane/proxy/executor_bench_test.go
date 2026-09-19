@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
+	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
 // These benchmarks measure Executor.ServeHTTP without real network I/O.
@@ -144,7 +144,6 @@ func newBenchmarkTransport(
 
 func (t *benchmarkTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	t.response.body.reset(t.responseBody)
-
 	t.response.response.Body = &t.response.body
 	t.response.response.Request = req
 
@@ -300,7 +299,7 @@ func BenchmarkProxyServeHTTP(b *testing.B) {
 		[]byte("hello"),
 	)
 
-	executor := NewExecutor(engine, noRateLimits(), transport)
+	executor := newBenchExecutor(b, engine, transport)
 
 	// Keep the fixture outside the timed region. The request itself is not
 	// reused because ServeHTTP mutates request/header state.
@@ -329,7 +328,7 @@ func BenchmarkProxyServeHTTP_EmptyHeaders(b *testing.B) {
 		[]byte("hello"),
 	)
 
-	executor := NewExecutor(engine, noRateLimits(), transport)
+	executor := newBenchExecutor(b, engine, transport)
 
 	requests := make([]*http.Request, b.N)
 
@@ -360,7 +359,7 @@ func BenchmarkProxyServeHTTP_RealisticHeaders(b *testing.B) {
 		[]byte("hello"),
 	)
 
-	executor := NewExecutor(engine, noRateLimits(), transport)
+	executor := newBenchExecutor(b, engine, transport)
 
 	requests := make([]*http.Request, b.N)
 
@@ -398,7 +397,7 @@ func BenchmarkProxyServeHTTP_WithHeaderPolicy(b *testing.B) {
 		[]byte("hello"),
 	)
 
-	executor := NewExecutor(engine, noRateLimits(), transport)
+	executor := newBenchExecutor(b, engine, transport)
 
 	requests := make([]*http.Request, b.N)
 
@@ -439,7 +438,7 @@ func BenchmarkProxyServeHTTPParallel(b *testing.B) {
 			[]byte("hello"),
 		)
 
-		executor := NewExecutor(engine, noRateLimits(), transport)
+		executor := newBenchExecutor(b, engine, transport)
 
 		for pb.Next() {
 			// ServeHTTP mutates request/header state. Give every invocation
@@ -468,22 +467,28 @@ func BenchmarkProxyServeHTTP_RealTransport(b *testing.B) {
 	defer upstream.Close()
 
 	engine := buildProxyBenchEngineWithUpstream(b, upstream.URL)
+
 	transport := &http.Transport{}
 	defer transport.CloseIdleConnections()
 
-	executor := NewExecutor(engine, noRateLimits(), transport)
+	executor := newBenchExecutor(b, engine, transport)
 	req := buildProxyBenchRequest()
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		w := &benchmarkResponseWriter{header: make(http.Header)}
+		w := &benchmarkResponseWriter{
+			header: make(http.Header),
+		}
 		executor.ServeHTTP(w, req)
 	}
 }
 
-func buildProxyBenchEngineWithUpstream(tb testing.TB, upstreamURL string) *router.Engine {
+func buildProxyBenchEngineWithUpstream(
+	tb testing.TB,
+	upstreamURL string,
+) *router.Engine {
 	tb.Helper()
 
 	cfg := &snapshot.CompiledConfig{

@@ -7,7 +7,7 @@ import (
 
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
 	"github.com/HAL-X9/aegis/internal/controlplane/ir"
-	"github.com/HAL-X9/aegis/internal/controlplane/snapshot"
+	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
 // Routes transforms normalized route definitions into immutable route
@@ -15,11 +15,16 @@ import (
 //
 // This is a control-plane operation and must NOT be used in the dataplane.
 //
+// headerIDs resolves every header name a route's policies mention to a
+// snapshot.HeaderID; pass the same builder to every Routes call for one
+// config build, then attach headerIDs.Registry() to
+// snapshot.CompiledConfig.HeaderNames — see headers_registry.go.
+//
 // Key properties of the output:
 //   - fully precomputed (no parsing in runtime path)
 //   - deterministic routing rules
 //   - optimized for fast lookup and evaluation
-func Routes(serviceIDs map[string]snapshot.ServiceID, routes []ir.Route, policies *ir.Policies) ([]snapshot.CompiledRoute, error) {
+func Routes(headerIDs *HeaderRegistryBuilder, serviceIDs map[string]snapshot.ServiceID, routes []ir.Route, policies *ir.Policies) ([]snapshot.CompiledRoute, error) {
 	compiledRoutes := make([]snapshot.CompiledRoute, 0, len(routes))
 
 	for _, route := range routes {
@@ -44,7 +49,7 @@ func Routes(serviceIDs map[string]snapshot.ServiceID, routes []ir.Route, policie
 			return nil, fmt.Errorf("route %q: %w", route.Name, err)
 		}
 
-		headers, err := compileRoutePolicyHeaders(route.Policies, policies)
+		headers, err := compileRoutePolicyHeaders(headerIDs, route.Policies, policies)
 		if err != nil {
 			return nil, fmt.Errorf("route %q: compile policy headers: %w", route.Name, err)
 		}
@@ -72,6 +77,12 @@ func Routes(serviceIDs map[string]snapshot.ServiceID, routes []ir.Route, policie
 	return compiledRoutes, nil
 }
 
+// headersPredicate compiles a route's header *match* predicates (does the
+// request carry this header, optionally with one of these values). This
+// is unrelated to header *mutation* IDs (headerIDs above): a match
+// predicate is evaluated against http.Header by name
+// (internal/dataplane/router.HeadersMatch), never through a HeaderID, so
+// it needs no registry.
 func headersPredicate(headers map[string][]string) ([]snapshot.HeaderPredicate, error) {
 	if len(headers) == 0 {
 		return nil, nil
@@ -141,10 +152,12 @@ func validatePolicyRefsExist(refs []ir.PolicyRef, policies *ir.Policies) error {
 	return nil
 }
 
-// compileRoutePolicyHeaders merges every headers-policy a route references
-// into one IR headers set, then compiles it directly — no shared byte blob
-// builder is needed since HeaderInstruction now carries its Value inline.
+// compileRoutePolicyHeaders merges every headers-policy a route
+// references into one IR headers set, then compiles it directly — no
+// shared byte-blob builder is needed, since HeaderInstruction carries its
+// Value inline and headerIDs resolves names to IDs as it goes.
 func compileRoutePolicyHeaders(
+	headerIDs *HeaderRegistryBuilder,
 	refs []ir.PolicyRef,
 	policies *ir.Policies,
 ) (snapshot.CompiledHeaders, error) {
@@ -180,7 +193,7 @@ func compileRoutePolicyHeaders(
 		}
 	}
 
-	return compileRouteHeaders(&merged)
+	return compileRouteHeaders(headerIDs, &merged), nil
 }
 
 func mergeHeadersOps(dst *ir.HeadersOps, src *ir.HeadersOps) error {

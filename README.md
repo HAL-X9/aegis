@@ -2,20 +2,33 @@
 
 A high-performance HTTP API gateway written in Go — routing, policy enforcement, proxying, and observability, built around a strict separation between control plane and data plane.
 
-Configuration (routes, services, policies) is compiled once at startup into immutable, allocation-free lookup structures. The request hot path never parses config, never touches a map with string-building keys, and never allocates on the common case — it only walks a precompiled radix trie and dispatches.
-
-```
-BenchmarkLookupHighFanout/routes=8192-10     12,976,374    91.07 ns/op    0 B/op    0 allocs/op
-BenchmarkLookupDeep/routes=4096-10            8,824,230   132.10 ns/op    0 B/op    0 allocs/op
-BenchmarkLookupMixed/routes=12288-10          8,213,004   145.60 ns/op    0 B/op    0 allocs/op
-```
-High-fanout route lookup stays below 100ns across 16–32,768 routes, with 0 allocations per operation. Deep and mixed-path lookups (interleaved static/param/wildcard routes) stay allocation-free as well, with latency in the ~116–146ns range across the tested route counts. Full benchmark suite in internal/dataplane/router.
+Configuration (routes, services, policies) is compiled once at startup into an immutable, allocation-free lookup structure. The request hot path never parses configuration, never touches a map with string-built keys, and never allocates on the common case — it only walks a precompiled radix trie and dispatches.
 
 ## Why
 
-Most gateway tutorials route with `map[string]http.Handler` and re-derive behavior from config on every request. Aegis instead treats configuration as a **build artifact**: control plane loads, normalizes, validates, and compiles YAML into a snapshot; data plane only ever executes against that compiled snapshot. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full request lifecycle and the reasoning behind each design decision.
+Configuration is treated as a build artifact rather than something interpreted at request time. The control plane loads, normalizes, validates, and compiles YAML into a snapshot; the data plane only ever executes against that compiled snapshot. Adding a route, a policy, or a service changes what the compiler produces — it never changes the request-serving code path itself.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full request lifecycle and the reasoning behind each design decision.
+
+## Lookup performance
+
+| Benchmark                   | Routes | Latency      | Allocations         |
+|-----------------------------|--------|--------------|---------------------|
+| `BenchmarkLookupHighFanout` | 8,192  | 91.07 ns/op  | 0 B/op, 0 allocs/op |
+| `BenchmarkLookupDeep`       | 4,096  | 132.10 ns/op | 0 B/op, 0 allocs/op |
+| `BenchmarkLookupMixed`      | 12,288 | 145.60 ns/op | 0 B/op, 0 allocs/op |
+
+Route lookup stays under 100 ns for high-fanout route sets and in the 130–150 ns range for deep and mixed static/param/wildcard paths, with zero allocations across the tested route counts. The full benchmark suite lives in `internal/dataplane/router`.
 
 ## Quick start
+
+### Run with Docker
+
+```bash
+git clone https://github.com/HAL-X9/aegis.git
+cd aegis
+docker compose up -d --build
+```
 
 ### Run from source
 
@@ -26,17 +39,9 @@ go mod download
 go run ./cmd -config configs/aegis.yaml -routes configs/gateway.yaml
 ```
 
-### Run with Docker
-
-```bash
-git clone https://github.com/HAL-X9/aegis.git
-cd aegis
-docker compose up -d --build
-```
-
 ### Configuration sources
 
-Aegis resolves config paths from CLI flags first, then environment variables. If neither is set, startup fails with an explicit error rather than falling back to a hidden default.
+Aegis resolves configuration paths from CLI flags first, then from environment variables. If neither is set, startup fails with an explicit error rather than falling back to a hidden default.
 
 | Config  | Flag      | Env var                     |
 |---------|-----------|-----------------------------|
@@ -73,7 +78,7 @@ go test ./internal/dataplane/router/ -bench . -benchmem
 
 ## Status
 
-Aegis is pre-1.0 and under active development. Public interfaces and config schemas may change.
+Aegis is pre-1.0 and under active development. Public interfaces and configuration schemas may change.
 
 ## Documentation
 

@@ -9,20 +9,39 @@ Aegis is split into two planes with a hard boundary between them:
 
 The boundary exists so the hot path never re-derives behavior from raw configuration. Every request touches only precompiled, read-only structures — no YAML parsing, no validation, no config-shaped branching at request time.
 
-```
-configs/*.yaml
-      │
-      ▼
-controlplane/loader → normalize → compile → validate → snapshot
-                                                            │
-                                                            ▼
-                                                  dataplane/router.Engine
-                                                            │
-Client ──▶ edge/public ──▶ middleware chain ──▶ proxy.Executor
-                              (recovery,             │
-                               request id,           ▼
-                               metrics,          Upstream service
-                               timeout)
+```mermaid
+%%{init: {'theme':'base'}}%%
+flowchart TB
+    subgraph CP["Control plane"]
+        CFG["configs/*.yaml"]
+        LOADER["loader"]
+        NORM["normalize"]
+        COMPILE["compile"]
+        VALID["validate"]
+        SNAP["snapshot"]
+
+        CFG --> LOADER --> NORM --> COMPILE --> VALID --> SNAP
+    end
+
+    subgraph DP["Data plane"]
+        ENGINE["router.Engine"]
+        CLIENT["Client"]
+        EDGE["edge/public"]
+        MW["Middleware chain
+        (recovery, request id,
+        metrics, timeout)"]
+        EXEC["proxy.Executor"]
+        UP["Upstream service"]
+
+        CLIENT --> EDGE --> MW --> EXEC --> UP
+    end
+
+    SNAP -->|published once at startup| ENGINE
+    ENGINE -->|Lookup| EXEC
+
+    classDef default fill:#e5f3ff,stroke:#e0e1e2,color:#22559b;
+    style CP fill:#ffffff,stroke:#e0e1e2
+    style DP fill:#ffffff,stroke:#e0e1e2
 ```
 
 ## Request lifecycle
@@ -34,6 +53,58 @@ Client ──▶ edge/public ──▶ middleware chain ──▶ proxy.Executor
 5. `policy.ExecuteMutations` applies configured header mutations to the outbound request, then hop-by-hop headers are stripped (`request.RemoveHopHeaders`).
 6. The request is forwarded via the configured `http.RoundTripper`. On success, response headers are copied back, response-side policy mutations are applied, and the body is streamed to the client with `io.Copy`.
 7. Failure modes are explicit and mapped to standard status codes: `503` (engine unavailable), `404` (no route), `405` (route exists, method doesn't), `502` (upstream failure).
+
+The sequence below traces one request end to end, including where the atomically published `View` is read and which component performs each mutation.
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'actorBkg':'#e5f3ff','actorBorder':'#e0e1e2','actorTextColor':'#1a1a1a','actorLineColor':'#e0e1e2','signalColor':'#5a5a5a','signalTextColor':'#1a1a1a','noteBkgColor':'#e5f3ff','noteBorderColor':'#e0e1e2','noteTextColor':'#1a1a1a','sequenceNumberColor':'#1a1a1a'}}}%%
+sequenceDiagram
+    participant C as Client
+    participant E as edge/public
+    participant M as Middleware
+    participant X as proxy.Executor
+    participant V as View
+    participant R as FlatTrie / Router
+    participant P as Policies
+    participant T as http.Transport
+    participant U as Upstream
+
+    Note over V,X: One request observes exactly one View generation
+
+    C->>E: HTTP request
+    E->>M: ServeHTTP
+    M->>X: ServeHTTP
+
+    X->>V: atomic.Load()
+    V-->>X: generation N
+
+    X->>R: Lookup(path)
+    R-->>X: route candidates
+
+    X->>X: MethodMask match
+    X->>R: Header predicates
+    R-->>X: matched RouteID
+
+    X->>V: Route + Service + Policies
+    V-->>X: compiled runtime state
+
+    X->>P: request mutations
+    P-->>X: mutated headers
+
+    X->>X: strip hop-by-hop headers
+    X->>T: RoundTrip(outbound request)
+
+    T->>U: HTTP request
+    U-->>T: HTTP response
+    T-->>X: response
+
+    X->>P: response mutations
+    P-->>X: mutated response
+
+    X-->>M: response
+    M-->>E: response
+    E-->>C: HTTP response
+```
 
 ## Key design decisions
 
@@ -52,7 +123,7 @@ Client ──▶ edge/public ──▶ middleware chain ──▶ proxy.Executor
 ## Package layout
 
 | Package                         | Responsibility                                                                         |
-|---------------------------------|----------------------------------------------------------------------------------------|
+|----------------------------------|------------------------------------------------------------------------------------------|
 | `internal/app`                  | Process wiring: dependency container, lifecycle, graceful shutdown                     |
 | `internal/config`               | Runtime config loading and resolution (flags/env)                                      |
 | `internal/contracts/methodmask` | Shared HTTP-method bitmask contract used by compiler and router                        |
@@ -74,5 +145,48 @@ This is a pre-1.0 project; the following is deliberately out of scope for the cu
 - **Metrics middleware** — the design uses a `sync.Pool`-backed `ResponseWriter` wrapper to capture status code and latency without allocating per request; route-pattern labeling (not raw path, to avoid unbounded Prometheus cardinality) is threaded from the executor back to the middleware via a context-carried recorder. Implementation is in progress.
 - **Distributed tracing** is intentionally deferred. It requires an OpenTelemetry dependency, an exporter, and context propagation into the executor — real infrastructure, not just a middleware shim — and isn't justified before the gateway has more than one hop worth tracing.
 - **gRPC upstreams** are not yet supported; the executor currently proxies HTTP only.
+
+The diagram below places these items against the pipeline that is already built: the compiled path from configuration to the atomically published `View` is solid; everything the executor does not yet call is shown as a planned extension point.
+
+```mermaid
+%%{init: {'theme':'base'}}%%
+flowchart TB
+    subgraph CURRENT["Current"]
+        A["Config"]
+        B["Compile"]
+        C["CompiledConfig"]
+        D["Router"]
+        E["Executor"]
+        F["RateLimiterSet"]
+        G["Atomic View"]
+
+        A --> B --> C
+        C --> D
+        C --> F
+        D --> G
+        F --> G
+        G --> E
+    end
+
+    subgraph PLANNED["In progress / planned"]
+        R["Recovery middleware"]
+        T["Timeout middleware"]
+        M["Full metrics middleware"]
+        OT["Distributed tracing"]
+        GRPC["gRPC upstreams"]
+        RELOAD["Config reload"]
+    end
+
+    E -.-> R
+    E -.-> T
+    E -.-> M
+    E -.-> OT
+    E -.-> GRPC
+    C -.-> RELOAD
+
+    classDef default fill:#e5f3ff,stroke:#e0e1e2,color:#22559b;
+    style CURRENT fill:#ffffff,stroke:#e0e1e2
+    style PLANNED fill:#ffffff,stroke:#e0e1e2
+```
 
 Config schemas and public interfaces may change before an initial stable release.

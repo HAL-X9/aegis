@@ -26,6 +26,7 @@ type Timeouts struct {
 	ReadHeaderTimeout time.Duration `yaml:"read_header_timeout"`
 	WriteTimeout      time.Duration `yaml:"write_timeout"`
 	IdleTimeout       time.Duration `yaml:"idle_timeout"`
+	RequestTimeout    time.Duration `yaml:"request_timeout"`
 }
 
 // UpstreamTransport configures outbound HTTP transport behavior including connection pooling limits and network timeouts for upstream service communication.

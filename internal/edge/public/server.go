@@ -21,10 +21,15 @@ func NewPublicServer(
 
 	forward := NewForwardHandler(executor)
 	publicHandler := http.Handler(NewRouter(forward))
+
 	metricsMiddleware := middleware.NewMetricsMiddleware(metrics)
+	timeoutMiddleware := middleware.NewTimeoutMiddleware(
+		cfg.Listeners.Public.Timeouts.RequestTimeout,
+	)
 
 	publicHandler = middleware.RequestID(publicHandler)
 	publicHandler = metricsMiddleware.Metrics(publicHandler)
+	publicHandler = timeoutMiddleware.Timeout(publicHandler)
 
 	publicHTTP := &http.Server{
 		Addr:              cfg.Listeners.Public.Addr,

@@ -1,12 +1,11 @@
 package public
 
-import (
-	"net/http"
-)
+import "net/http"
 
-// NewRouter registers public HTTP routes and forwards user traffic to dataplane.
-func NewRouter(forward *ForwardHandler) *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.Handle("/", forward)
-	return mux
+// NewRouter returns the public HTTP handler.
+//
+// Public routing is implemented by the dataplane. The public edge only
+// provides the HTTP entrypoint and forwards requests to the dataplane.
+func NewRouter(forward *ForwardHandler) http.Handler {
+	return forward
 }

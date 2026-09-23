@@ -9,6 +9,7 @@ import (
 	"github.com/HAL-X9/aegis/internal/observe/metrics"
 )
 
+// NewPublicServer builds the public HTTP server and its request pipeline.
 func NewPublicServer(
 	cfg *config.Runtime,
 	executor RequestExecutor,
@@ -20,20 +21,22 @@ func NewPublicServer(
 	}
 
 	forward := NewForwardHandler(executor)
-	publicHandler := http.Handler(NewRouter(forward))
+	publicHandler := NewRouter(forward)
 
 	metricsMiddleware := middleware.NewMetricsMiddleware(metrics)
 	timeoutMiddleware := middleware.NewTimeoutMiddleware(
 		cfg.Listeners.Public.Timeouts.RequestTimeout,
 	)
 
-	publicHandler = middleware.RequestID(publicHandler)
-	publicHandler = metricsMiddleware.Metrics(publicHandler)
-	publicHandler = timeoutMiddleware.Timeout(publicHandler)
+	var handler = publicHandler
+
+	handler = middleware.RequestID(handler)
+	handler = metricsMiddleware.Metrics(handler)
+	handler = timeoutMiddleware.Timeout(handler)
 
 	publicHTTP := &http.Server{
 		Addr:              cfg.Listeners.Public.Addr,
-		Handler:           publicHandler,
+		Handler:           handler,
 		ReadTimeout:       cfg.Listeners.Public.Timeouts.ReadTimeout,
 		ReadHeaderTimeout: cfg.Listeners.Public.Timeouts.ReadHeaderTimeout,
 		WriteTimeout:      cfg.Listeners.Public.Timeouts.WriteTimeout,

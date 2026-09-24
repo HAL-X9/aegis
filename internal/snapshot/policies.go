@@ -35,15 +35,6 @@ const (
 	HeaderXFrameOptions
 	HeaderXXSSProtection
 
-	HeaderConnection
-	HeaderKeepAlive
-	HeaderProxyAuthenticate
-	HeaderProxyAuthorization
-	HeaderTE
-	HeaderTrailer
-	HeaderTransferEncoding
-	HeaderUpgrade
-
 	// HeaderDynamicStart Dynamic headers begin here.
 	HeaderDynamicStart
 )

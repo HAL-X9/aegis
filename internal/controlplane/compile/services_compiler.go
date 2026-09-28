@@ -33,6 +33,7 @@ func Services(services ir.Services) (snapshot.CompiledServices, map[string]snaps
 		compiledServices = append(compiledServices, snapshot.CompiledService{
 			Name:     name,
 			Upstream: upstreamOriginURL(service.Upstream),
+			Retry:    snapshot.CompiledRetry{Attempts: max(1, service.Retries.Attempts)},
 		})
 	}
 

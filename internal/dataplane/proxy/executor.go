@@ -11,6 +11,7 @@ import (
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/request"
+	"github.com/HAL-X9/aegis/internal/dataplane/retry"
 	"github.com/HAL-X9/aegis/internal/dataplane/routelabel"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
 	"github.com/HAL-X9/aegis/internal/snapshot"
@@ -156,6 +157,10 @@ func (executor *Executor) buildUpstreamRequest(view *View, r *http.Request, rout
 //   - returns 405 if no route supports the request method
 //   - returns 429 if the matched route's rate-limit policy rejects the request
 //   - returns 502 if upstream request execution fails
+//   - retries idempotent body-less requests on transport errors and
+//     502/503/504 when the route's service configures more than one attempt
+//     (see internal/dataplane/retry); the rate limiter is checked once,
+//     before the first attempt
 //
 // The request body is forwarded as-is to the upstream service.
 //
@@ -262,7 +267,10 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// whether they came from the client, a forwarding helper, or a policy.
 	request.RemoveHopHeaders(req.Header)
 
-	resp, err := executor.transport.RoundTrip(req)
+	// Header mutations above run once; every retry attempt reuses the same
+	// prepared req. release runs only after ServeHTTP returns, i.e. after
+	// all attempts, so the pooled request is never recycled mid-retry.
+	resp, err := retry.Do(executor.transport, req, matchedRoute.Policies.Retry.Attempts)
 	if err != nil {
 		http.Error(w, "bad gateway: upstream request failed", http.StatusBadGateway)
 		return

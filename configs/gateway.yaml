@@ -6,6 +6,8 @@ services:
       scheme: http
       host: mock-upstream
       port: 8082
+    retries:
+      attempts: 3
 
   order-service:
     upstream:

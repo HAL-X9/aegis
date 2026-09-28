@@ -59,4 +59,5 @@ type HeaderPredicate struct {
 type CompiledRoutePolicies struct {
 	Headers     CompiledHeaders
 	RateLimitID int32
+	Retry       CompiledRetry
 }

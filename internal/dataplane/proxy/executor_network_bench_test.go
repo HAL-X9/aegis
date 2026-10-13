@@ -134,11 +134,9 @@ func buildE2EBenchEngine(tb testing.TB, upstreamURL string) *router.Engine {
 	return engine
 }
 
-// BenchmarkFullProxyE2E measures the complete path: real client -> real
-// gateway listener -> Executor -> real transport -> real upstream -> back.
-//
-// This is the number that should match production order of magnitude. The
-// other two benchmarks exist to explain why it looks the way it does.
+// BenchmarkFullProxyE2E measures real client -> gateway listener ->
+// Executor -> real transport -> real upstream and back. The public
+// listener's middleware is not included.
 func BenchmarkFullProxyE2E(b *testing.B) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

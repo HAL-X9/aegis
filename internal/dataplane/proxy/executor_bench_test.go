@@ -250,11 +250,9 @@ func buildProxyBenchEngineWithPolicy(tb testing.TB) *router.Engine {
 	return engine
 }
 
-// buildProxyBenchRequest returns a fresh request.
-//
-// ServeHTTP modifies request/header state while constructing the upstream
-// request. Consequently, benchmark invocations must not share the same
-// request object or Header map.
+// buildProxyBenchRequest returns a request with a typical header set.
+// ServeHTTP does not modify its request, so one request can be served
+// repeatedly.
 func buildProxyBenchRequest() *http.Request {
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -281,8 +279,7 @@ func newBenchmarkWriter() *benchmarkResponseWriter {
 //
 //   - compiled route lookup
 //   - method admission
-//   - request preparation
-//   - upstream request pooling
+//   - upstream request preparation
 //   - fake RoundTrip
 //   - response handling
 //   - response body streaming
@@ -301,20 +298,12 @@ func BenchmarkProxyServeHTTP(b *testing.B) {
 
 	executor := newBenchExecutor(b, engine, transport)
 
-	// Keep the fixture outside the timed region. The request itself is not
-	// reused because ServeHTTP mutates request/header state.
-	requests := make([]*http.Request, b.N)
-
-	for i := range requests {
-		requests[i] = buildProxyBenchRequest()
-	}
+	req := buildProxyBenchRequest()
+	w := newBenchmarkWriter()
 
 	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		w := newBenchmarkWriter()
-		executor.ServeHTTP(w, requests[i])
+	for b.Loop() {
+		executor.ServeHTTP(w, req)
 	}
 }
 
@@ -330,22 +319,12 @@ func BenchmarkProxyServeHTTP_EmptyHeaders(b *testing.B) {
 
 	executor := newBenchExecutor(b, engine, transport)
 
-	requests := make([]*http.Request, b.N)
-
-	for i := range requests {
-		requests[i] = httptest.NewRequest(
-			http.MethodGet,
-			"http://gateway.local/api/v1/profile",
-			nil,
-		)
-	}
+	req := httptest.NewRequest(http.MethodGet, "http://gateway.local/api/v1/profile", nil)
+	w := newBenchmarkWriter()
 
 	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		w := newBenchmarkWriter()
-		executor.ServeHTTP(w, requests[i])
+	for b.Loop() {
+		executor.ServeHTTP(w, req)
 	}
 }
 
@@ -361,27 +340,15 @@ func BenchmarkProxyServeHTTP_RealisticHeaders(b *testing.B) {
 
 	executor := newBenchExecutor(b, engine, transport)
 
-	requests := make([]*http.Request, b.N)
-
-	for i := range requests {
-		req := buildProxyBenchRequest()
-
-		for j := range 20 {
-			req.Header.Set(
-				"X-Benchmark-"+strconv.Itoa(j),
-				"value-"+strconv.Itoa(j),
-			)
-		}
-
-		requests[i] = req
+	req := buildProxyBenchRequest()
+	for j := range 20 {
+		req.Header.Set("X-Benchmark-"+strconv.Itoa(j), "value-"+strconv.Itoa(j))
 	}
+	w := newBenchmarkWriter()
 
 	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		w := newBenchmarkWriter()
-		executor.ServeHTTP(w, requests[i])
+	for b.Loop() {
+		executor.ServeHTTP(w, req)
 	}
 }
 
@@ -399,31 +366,19 @@ func BenchmarkProxyServeHTTP_WithHeaderPolicy(b *testing.B) {
 
 	executor := newBenchExecutor(b, engine, transport)
 
-	requests := make([]*http.Request, b.N)
-
-	for i := range requests {
-		req := buildProxyBenchRequest()
-		req.Header.Set("X-Forwarded-For", "203.0.113.1")
-		requests[i] = req
-	}
+	req := buildProxyBenchRequest()
+	req.Header.Set("X-Forwarded-For", "203.0.113.1")
+	w := newBenchmarkWriter()
 
 	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		w := newBenchmarkWriter()
-		executor.ServeHTTP(w, requests[i])
+	for b.Loop() {
+		executor.ServeHTTP(w, req)
 	}
 }
 
 // BenchmarkProxyServeHTTPParallel measures concurrent Executor execution.
-//
-// Every benchmark worker owns its request, response writer and transport.
-// Nothing containing an http.Header map is shared between workers.
-//
-// This is important because ServeHTTP mutates request/header state. A shared
-// request or shared Header map would turn the benchmark into a data-race
-// detector rather than a concurrency benchmark.
+// Each worker owns its transport and response writer, whose header maps
+// are written by ServeHTTP, and its request.
 func BenchmarkProxyServeHTTPParallel(b *testing.B) {
 	engine := buildProxyBenchEngine(b)
 
@@ -439,24 +394,18 @@ func BenchmarkProxyServeHTTPParallel(b *testing.B) {
 		)
 
 		executor := newBenchExecutor(b, engine, transport)
+		req := buildProxyBenchRequest()
+		w := newBenchmarkWriter()
 
 		for pb.Next() {
-			// ServeHTTP mutates request/header state. Give every invocation
-			// an independent request map rather than reusing one.
-			req := buildProxyBenchRequest()
-
-			w := newBenchmarkWriter()
 			executor.ServeHTTP(w, req)
 		}
 	})
 }
 
-// BenchmarkProxyServeHTTP_RealTransport exercises the pooled request path:
-// unlike the other benchmarks in this file, transport here is a real
-// *http.Transport (not benchmarkTransport), so buildUpstreamRequest takes
-// the upstreamRequestPool branch and RoundTrip does actual network I/O
-// against a local httptest.Server — giving allocs/op and ns/op numbers
-// that reflect production, not the mock path.
+// BenchmarkProxyServeHTTP_RealTransport measures ServeHTTP with a real
+// *http.Transport against a local upstream, so the result includes
+// transport and loopback network cost.
 func BenchmarkProxyServeHTTP_RealTransport(b *testing.B) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -473,14 +422,10 @@ func BenchmarkProxyServeHTTP_RealTransport(b *testing.B) {
 
 	executor := newBenchExecutor(b, engine, transport)
 	req := buildProxyBenchRequest()
+	w := newBenchmarkWriter()
 
 	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		w := &benchmarkResponseWriter{
-			header: make(http.Header),
-		}
+	for b.Loop() {
 		executor.ServeHTTP(w, req)
 	}
 }

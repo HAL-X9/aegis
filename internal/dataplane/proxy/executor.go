@@ -41,24 +41,11 @@ var copyBufferPool = sync.Pool{
 	},
 }
 
-// upstreamRequest bundles the outbound *http.Request and its *url.URL in a
-// single heap allocation. RoundTripper requires req.URL to be a pointer, so
-// without this trick the two would land in two separate mallocgc calls.
-//
-// Pooling this is only safe because the standard library's *http.Transport
-// documents that it never retains a *Request or its URL past the RoundTrip
-// call that owns it. Executor.transport is an interface, so that contract
-// cannot be assumed for whatever value is actually injected — buildUpstreamRequest
-// below type-asserts to *http.Transport and only pools on that positive
-// match, falling back to a plain allocation for any other RoundTripper
-// (e.g. one that queues requests for background retry).
+// upstreamRequest holds an outbound request and its URL in a single
+// allocation.
 type upstreamRequest struct {
 	req http.Request
 	url url.URL
-}
-
-var upstreamRequestPool = sync.Pool{
-	New: func() any { return new(upstreamRequest) },
 }
 
 // NewExecutor creates an Executor bound to transport, which must be
@@ -83,75 +70,26 @@ func (executor *Executor) Publish(v *View) {
 	executor.view.Store(v)
 }
 
-// buildUpstreamRequest builds the outbound request for route, carrying
-// over r's method, headers, body, and context, with path (r's canonical
-// path, see request.CanonicalPath) and r's query rewritten onto the
-// route's upstream origin.
-//
-// Two corrections versus a naive `*out = *r`:
-//   - out.Header is r.Header.Clone(), not a shared reference. `*out = *r`
-//     copies the Header map header, not its contents, so without cloning,
-//     any header mutation on the outbound request (see policy.ExecuteMutations
-//     below) would silently mutate the inbound request's headers too.
-//   - out.Host is explicitly set to the upstream's host. net/http prefers
-//     Request.Host over Request.URL.Host when sending a request; left
-//     unset, it carries over the original client's Host header, and any
-//     upstream that routes by Host would see the wrong one.
-//
-// The req+url pair is served from upstreamRequestPool only when transport
-// is verified to be the standard library's *http.Transport — the only
-// RoundTripper whose documented behavior makes reusing that memory after
-// RoundTrip returns safe (see upstreamRequestPool's doc comment). Any
-// other transport gets a freshly allocated, unpooled request instead, so
-// pooling can never be silently unsafe just because Executor was built
-// with a different RoundTripper.
-//
-// release must be called exactly once when req is no longer needed.
-func (executor *Executor) buildUpstreamRequest(view *View, r *http.Request, route *snapshot.CompiledRoute, path string) (req *http.Request, release func()) {
-	upstreamURL := *view.Engine.UpstreamURL(route)
-	upstreamURL.Path = path
+// newUpstreamRequest returns a shallow copy of r addressed to route's
+// upstream, with the canonical path, r's query, and a header built by
+// request.UpstreamHeader. It keeps r's context and body, sets Host to the
+// upstream host, and clears RequestURI, which client requests must not set.
+func newUpstreamRequest(view *View, r *http.Request, route *snapshot.CompiledRoute, path string) *http.Request {
+	out := &upstreamRequest{url: *view.Engine.UpstreamURL(route)}
+	out.url.Path = path
 	if path == r.URL.Path {
-		// Unchanged path: keep the client's original percent-encoding. A
-		// canonicalized path is re-encoded from Path instead, since
-		// RawPath no longer describes it.
-		upstreamURL.RawPath = r.URL.RawPath
+		// RawPath describes only the original path; a canonicalized path is
+		// re-encoded from Path.
+		out.url.RawPath = r.URL.RawPath
 	}
-	upstreamURL.RawQuery = r.URL.RawQuery
+	out.url.RawQuery = r.URL.RawQuery
 
-	header := r.Header.Clone()
-
-	if _, poolable := executor.transport.(*http.Transport); poolable {
-		combo := upstreamRequestPool.Get().(*upstreamRequest)
-
-		combo.url = upstreamURL
-		// A full struct copy of *r — not field-by-field construction — is
-		// what carries over r's unexported ctx (deadline, cancellation,
-		// trace info) without an extra WithContext allocation: WithContext
-		// just does this same copy internally and hands back a *new* heap
-		// object, so doing it ourselves into combo.req is strictly one
-		// allocation cheaper. Header and Host are then overwritten below.
-		combo.req = *r
-		combo.req.URL = &combo.url
-		combo.req.Host = upstreamURL.Host
-		combo.req.Header = header
-		// RequestURI is populated by net/http for incoming server requests
-		// and must be empty on outgoing client requests — Transport.RoundTrip
-		// rejects it otherwise ("Request.RequestURI can't be set in client
-		// requests"). Everything else copied from *r (Body, ContentLength,
-		// TLS, etc.) is either correct as-is for a proxied request or
-		// harmless/ignored by the client Transport.
-		combo.req.RequestURI = ""
-
-		return &combo.req, func() { upstreamRequestPool.Put(combo) }
-	}
-
-	out := new(http.Request)
-	*out = *r
-	out.URL = &upstreamURL
-	out.Host = upstreamURL.Host
-	out.Header = header
-	out.RequestURI = ""
-	return out, func() {}
+	out.req = *r
+	out.req.URL = &out.url
+	out.req.Host = out.url.Host
+	out.req.Header = request.UpstreamHeader(r)
+	out.req.RequestURI = ""
+	return &out.req
 }
 
 // ServeHTTP resolves the incoming request using the routing engine and
@@ -264,17 +202,10 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, release := executor.buildUpstreamRequest(view, r, matchedRoute, path)
-	defer release()
-
+	// The X-Forwarded-* headers set by newUpstreamRequest precede the
+	// request policy, so the policy can override or remove them.
+	req := newUpstreamRequest(view, r, matchedRoute, path)
 	headerNames := view.Engine.HeaderNames()
-
-	// Build the complete gateway-generated forwarding information before
-	// applying the final request header policy. This ordering is
-	// intentional: a policy such as `remove: X-Forwarded-For` must be able
-	// to remove both a client-supplied value and an X-Forwarded-For value
-	// generated by the gateway itself.
-	request.SetForwardedHeaders(req.Header, r)
 
 	policy.ExecuteMutations(req.Header, &matchedRoute.Policies.Headers.Request, headerNames)
 
@@ -282,9 +213,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// whether they came from the client, a forwarding helper, or a policy.
 	request.RemoveHopHeaders(req.Header)
 
-	// Header mutations above run once; every retry attempt reuses the same
-	// prepared req. release runs only after ServeHTTP returns, i.e. after
-	// all attempts, so the pooled request is never recycled mid-retry.
+	// Every retry attempt reuses req as prepared above.
 	resp, err := retry.Do(executor.transport, req, matchedRoute.Policies.Retry.Attempts)
 	if err != nil {
 		http.Error(w, "bad gateway: upstream request failed", http.StatusBadGateway)

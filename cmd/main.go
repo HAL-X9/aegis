@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"runtime"
 	"syscall"
 
 	"github.com/HAL-X9/aegis/internal/app"
@@ -24,12 +23,6 @@ func main() {
 // nothing that needs cleanup may live downstream of it. Keeping that call
 // in main, and nowhere else, is what makes that safe.
 func run() error {
-	// Profiling knobs are process-global. Set them before any goroutine
-	// that could contend on a mutex or block on a channel starts — that
-	// means before app.Run, which is what actually starts the listeners.
-	runtime.SetMutexProfileFraction(1)
-	runtime.SetBlockProfileRate(1)
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

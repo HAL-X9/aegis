@@ -101,8 +101,10 @@ func validateUpstreamTransport(cfg *UpstreamTransport) error {
 		return fmt.Errorf("max_idle_conns must be >= 0")
 	}
 
-	if cfg.MaxIdleConnsPerHost < 0 {
-		return fmt.Errorf("max_idle_conns_per_host must be >= 0")
+	// Zero is rejected rather than passed through: net/http treats it as 2,
+	// which forces a new upstream connection for most concurrent requests.
+	if cfg.MaxIdleConnsPerHost < 1 {
+		return fmt.Errorf("max_idle_conns_per_host must be >= 1")
 	}
 
 	if cfg.MaxConnsPerHost < 0 {

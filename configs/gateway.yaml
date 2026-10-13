@@ -32,7 +32,6 @@ routes:
       methods: [GET]
       headers:
         Authorization: []
-        X-Request-Id: []
         X-Client-Channel: [web, mobile]
         X-Device-Id: []
         X-Correlation-Id: []
@@ -47,7 +46,6 @@ routes:
       methods: [GET]
       headers:
         Authorization: [ ]
-        X-Request-Id: [ ]
         X-Client-Channel: [ web, mobile ]
         X-Device-Id: [ ]
         X-Correlation-Id: [ ]
@@ -69,8 +67,6 @@ policies:
 
     security-headers:
       request:
-        add:
-          X-Request-Id: "<generated-or-from-incoming>"
         remove:
           - X-Forwarded-For
           - X-Forwarded-Proto

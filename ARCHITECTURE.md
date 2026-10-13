@@ -116,7 +116,7 @@ sequenceDiagram
 
 **Middleware as `func(http.Handler) http.Handler`.** Standard, composable Go idiom. A `chain.go` helper composes an ordered list of middleware into a single handler; `dataplane/pipeline` composes the resulting chain with routing, policy, and the executor into the full data-plane handler.
 
-**Request ID: UUIDv7, generated server-side, never trusted from the client.** UUIDv7 is time-ordered, so IDs sort naturally in logs and any future datastore, unlike UUIDv4. Client-supplied `X-Request-ID` values are not used as the canonical ID — Aegis always generates its own, since an untrusted, unvalidated client header must never become an internal correlation key or a log-injection vector. The ID is carried through `context.Context` within the process and would be forwarded as a header/gRPC-metadata entry at any process boundary.
+**Request ID: accepted when well-formed, otherwise a UUIDv7.** A client-supplied `X-Request-ID` is kept only when it is a single value of 1–128 visible ASCII characters, so a caller's ID can be followed end to end while spaces and control characters — the log-injection vector — never get through. Anything else is replaced with a UUIDv7, which is time-ordered and sorts naturally in logs, unlike UUIDv4. The ID is written into the request headers, which is how it reaches the upstream and later handlers without a `context.Context` allocation, and is echoed in the response.
 
 **Separate system and public listeners.** Health and metrics are served on a distinct port (`:18080`) from user traffic (`:8080`), so operational endpoints are never reachable through the same routing/policy path as untrusted traffic.
 

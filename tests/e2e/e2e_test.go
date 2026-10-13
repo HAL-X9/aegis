@@ -145,8 +145,6 @@ policies:
   headers:
     security-headers:
       request:
-        add:
-          X-Request-Id: "e2e-test"
         remove:
           - X-Forwarded-For
       response:
@@ -249,8 +247,40 @@ func TestGateway_RequestSidePolicyReachesUpstream(t *testing.T) {
 	if got := captured.Get("X-Forwarded-For"); got != "" {
 		t.Errorf("X-Forwarded-For reached upstream as %q, want stripped by policy", got)
 	}
-	if got := captured.Get("X-Request-Id"); got != "e2e-test" {
-		t.Errorf("X-Request-Id reached upstream as %q, want %q", got, "e2e-test")
+}
+
+func TestGateway_ForwardsAndEchoesRequestID(t *testing.T) {
+	upstream, captured := newMockUpstream(t)
+	deps := bootstrapTestGateway(t, upstream)
+
+	gw := httptest.NewServer(deps.PublicHTTP.Handler)
+	t.Cleanup(gw.Close)
+
+	for name, clientID := range map[string]string{"client-supplied": "e2e-trace-42", "generated": ""} {
+		t.Run(name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, gw.URL+"/api/v1/profile", nil)
+			if err != nil {
+				t.Fatalf("build request: %v", err)
+			}
+			if clientID != "" {
+				req.Header.Set("X-Request-Id", clientID)
+			}
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			_, _ = io.ReadAll(resp.Body)
+
+			echoed := resp.Header.Get("X-Request-Id")
+			if echoed == "" || (clientID != "" && echoed != clientID) {
+				t.Fatalf("echoed X-Request-Id = %q, want %q (or a generated ID if empty)", echoed, clientID)
+			}
+			if got := captured.Get("X-Request-Id"); got != echoed {
+				t.Errorf("X-Request-Id reached upstream as %q, want the echoed %q", got, echoed)
+			}
+		})
 	}
 }
 

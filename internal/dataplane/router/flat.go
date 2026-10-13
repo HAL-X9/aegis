@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
@@ -33,8 +34,10 @@ type FlatNode struct {
 }
 
 type FlatTrie struct {
-	nodes     []FlatNode
-	prefixes  []byte
+	nodes []FlatNode
+	// prefixes is a string, not []byte, so prefixOf can hand out
+	// substrings for comparison without converting or allocating.
+	prefixes  string
 	routeRefs []snapshot.RouteID
 }
 
@@ -46,7 +49,7 @@ func Flatten(trie *RadixTrie) (*FlatTrie, error) {
 	if err := b.add(trie.root); err != nil {
 		return nil, err
 	}
-	return &FlatTrie{nodes: b.nodes, prefixes: b.prefixes, routeRefs: b.routeRefs}, nil
+	return &FlatTrie{nodes: b.nodes, prefixes: string(b.prefixes), routeRefs: b.routeRefs}, nil
 }
 
 type flatBuilder struct {
@@ -141,82 +144,106 @@ func sortedChildren(children []*RadixNode) []*RadixNode {
 	return out
 }
 
+// Lookup calls visit, in priority order, for every candidate set whose
+// route matches path; visit returns true once it accepts a route, which
+// ends the lookup.
+//
+// path must be canonical (see request.CanonicalPath): it starts with '/'
+// and has no empty or dot segments. Lookup does not canonicalize it
+// itself, so the router never routes a path other than the one forwarded
+// upstream: an empty segment never matches, and every other segment, dot
+// segments included, is compared literally.
+//
+// Route paths have prefix semantics on segment boundaries: "/api" matches
+// "/api", "/api/" and "/api/v1", but not "/apix". "/" therefore matches
+// every path. At each depth, candidates are offered most specific first:
+// static, then :param, then *wildcard, then the routes ending at the
+// enclosing segment.
 func (t *FlatTrie) Lookup(path string, visit func(candidates []snapshot.RouteID) bool) {
-	if t == nil || len(t.nodes) == 0 || visit == nil {
+	if t == nil || len(t.nodes) == 0 || visit == nil || !strings.HasPrefix(path, "/") {
 		return
 	}
-	t.lookup(0, path, visit)
+	t.lookup(0, path[1:], visit)
 }
 
-func (t *FlatTrie) lookup(nodeID NodeID, path string, visit func([]snapshot.RouteID) bool) bool {
-	for len(path) > 0 && path[0] == '/' {
-		path = path[1:]
-	}
+// lookup matches rest, the part of the request path after the '/' that
+// ends nodeID's segment, against routes at or below boundary node nodeID.
+func (t *FlatTrie) lookup(nodeID NodeID, rest string, visit func([]snapshot.RouteID) bool) bool {
 	node := &t.nodes[nodeID]
 
-	if len(path) == 0 {
-		if node.RouteCount > 0 && visit(t.candidatesOf(nodeID)) {
+	if rest == "" {
+		// The path ends here: exact routes first, then a trailing wildcard,
+		// which also matches an empty remainder ("/files/*" matches "/files").
+		if t.visitRoutes(nodeID, visit) {
 			return true
 		}
-		if node.WildcardChild != noNode {
-			return visit(t.candidatesOf(node.WildcardChild))
-		}
+		return node.WildcardChild != noNode && t.visitRoutes(node.WildcardChild, visit)
+	}
+
+	segment, tail := cutSegment(rest)
+	if segment == "" {
+		// Only a non-canonical path has an empty segment ("//").
 		return false
 	}
 
-	end := 0
-	for end < len(path) && path[end] != '/' {
-		end++
-	}
-	segment, rest := path[:end], path[end:]
-
-	if childID, ok := t.matchStaticSegment(nodeID, segment); ok {
-		if t.lookupOrFallback(childID, rest, visit) {
-			return true
-		}
-	}
-	if node.ParamChild != noNode {
-		if t.lookupOrFallback(node.ParamChild, rest, visit) {
-			return true
-		}
-	}
-	if node.WildcardChild != noNode {
-		return visit(t.candidatesOf(node.WildcardChild))
-	}
-	return false
-}
-
-func (t *FlatTrie) lookupOrFallback(nodeID NodeID, rest string, visit func([]snapshot.RouteID) bool) bool {
-	if t.lookup(nodeID, rest, visit) {
+	if childID, ok := t.matchStatic(nodeID, segment); ok && t.lookup(childID, tail, visit) {
 		return true
 	}
-	trimmed := rest
-	for len(trimmed) > 0 && trimmed[0] == '/' {
-		trimmed = trimmed[1:]
+	if node.ParamChild != noNode && t.lookup(node.ParamChild, tail, visit) {
+		return true
 	}
-	if trimmed == "" {
-		return false
+	if node.WildcardChild != noNode && t.visitRoutes(node.WildcardChild, visit) {
+		return true
 	}
-	if cands := t.candidatesOf(nodeID); cands != nil {
-		return visit(cands)
-	}
-	return false
+	// Prefix semantics: routes ending at this boundary match every path below it.
+	return t.visitRoutes(nodeID, visit)
 }
 
-func (t *FlatTrie) matchStaticSegment(nodeID NodeID, segment string) (NodeID, bool) {
-	for len(segment) > 0 {
-		node := &t.nodes[nodeID]
-		childID, ok := t.findChild(node, segment[0])
+// cutSegment splits path at its first '/' into the leading segment and
+// the rest after that '/'. On short path segments a plain byte loop beats
+// strings.Cut, whose IndexByte call overhead dominates; see LookupDeep.
+func cutSegment(path string) (segment, rest string) {
+	for i := 0; i < len(path); i++ {
+		if path[i] == '/' {
+			return path[:i], path[i+1:]
+		}
+	}
+	return path, ""
+}
+
+// visitRoutes offers nodeID's candidates to visit, if it has any.
+func (t *FlatTrie) visitRoutes(nodeID NodeID, visit func([]snapshot.RouteID) bool) bool {
+	candidates := t.candidatesOf(nodeID)
+	return candidates != nil && visit(candidates)
+}
+
+// matchStatic follows the static edges below nodeID that spell segment
+// plus its terminating '/', and returns the boundary node reached.
+func (t *FlatTrie) matchStatic(nodeID NodeID, segment string) (NodeID, bool) {
+	for {
+		next := byte('/')
+		if segment != "" {
+			next = segment[0]
+		}
+
+		childID, ok := t.findChild(&t.nodes[nodeID], next)
 		if !ok {
 			return 0, false
 		}
-		if !t.hasPrefix(childID, segment) {
+
+		prefix := t.prefixOf(childID)
+		if len(prefix) > len(segment) {
+			// The edge runs past the segment, so it must end exactly with
+			// the terminating '/': "ab/" matches segment "ab", "abc/" does not.
+			last := len(prefix) - 1
+			return childID, last == len(segment) && prefix[last] == '/' && prefix[:last] == segment
+		}
+		if prefix != segment[:len(prefix)] {
 			return 0, false
 		}
-		nodeID = childID
-		segment = segment[t.nodes[childID].PrefixLen:]
+
+		nodeID, segment = childID, segment[len(prefix):]
 	}
-	return nodeID, true
 }
 
 func (t *FlatTrie) findChild(node *FlatNode, b byte) (NodeID, bool) {
@@ -236,19 +263,9 @@ func (t *FlatTrie) findChild(node *FlatNode, b byte) (NodeID, bool) {
 	return 0, false
 }
 
-func (t *FlatTrie) hasPrefix(id NodeID, s string) bool {
-	n := &t.nodes[id]
-	pl := int(n.PrefixLen)
-	if pl > len(s) {
-		return false
-	}
-	off := n.PrefixOffset
-	for i := range pl {
-		if t.prefixes[off+uint32(i)] != s[i] {
-			return false
-		}
-	}
-	return true
+func (t *FlatTrie) prefixOf(nodeID NodeID) string {
+	n := &t.nodes[nodeID]
+	return t.prefixes[n.PrefixOffset : n.PrefixOffset+uint32(n.PrefixLen)]
 }
 
 func (t *FlatTrie) candidatesOf(nodeID NodeID) []snapshot.RouteID {

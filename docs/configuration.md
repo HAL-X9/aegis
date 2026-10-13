@@ -104,8 +104,10 @@ If a request matches several routes with `path_prefix` values of different lengt
 
 Besides static segments, a route's prefix may contain parameterized and wildcard segments:
 
-- `:name` — matches exactly one path segment and binds its value to the parameter name;
-- `*name` — matches the remainder of the path, however many segments deep.
+- `:name` — matches exactly one non-empty path segment; the name (letters, digits, `_`) documents the segment and is not used for matching;
+- `*` or `*name` — matches the remainder of the path, however many segments deep, including none. It must be the last segment.
+
+`path_prefix: /` matches every path and works as a catch-all. A single trailing slash is allowed and ignored. Empty segments (`//`), dot segments (`.`, `..`), `?` and `#` are rejected at load time: request paths are canonicalized before routing (see [routing-and-errors.md](routing-and-errors.md#10-the-request-path-is-canonicalized-first)), so such a route could never match.
 
 Both kinds of segments are subject to the same prefix-matching principle as static paths: a route registered at a parameter or wildcard node serves as a fallback answer for any path that continues past that node, once nothing more specific has been found deeper in the tree.
 
@@ -171,8 +173,6 @@ policies:
   headers:
     security-headers:
       request:
-        add:
-          X-Request-Id: "<generated-or-from-incoming>"
         remove:
           - X-Forwarded-For
           - X-Forwarded-Proto
@@ -241,8 +241,6 @@ policies:
   headers:
     security-headers:
       request:
-        add:
-          X-Request-Id: "<generated-or-from-incoming>"
         remove:
           - X-Forwarded-For
       response:

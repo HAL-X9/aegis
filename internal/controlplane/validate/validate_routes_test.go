@@ -337,3 +337,46 @@ func assertErrorContains(t *testing.T, err error, substr ...string) {
 		}
 	}
 }
+
+func TestValidatePathPrefix(t *testing.T) {
+	t.Parallel()
+
+	valid := []string{
+		"/",
+		"/api",
+		"/api/",
+		"/api/v1/users",
+		"/users/:id",
+		"/users/:user_id/orders/:order_id",
+		"/files/*",
+		"/files/*path",
+		"/v1/items:batchGet",
+	}
+	for _, path := range valid {
+		if err := validatePathPrefix(path); err != nil {
+			t.Errorf("validatePathPrefix(%q) = %v, want nil", path, err)
+		}
+	}
+
+	invalid := []struct {
+		path       string
+		wantSubstr string
+	}{
+		{path: "", wantSubstr: "is required and must not be blank"},
+		{path: "api", wantSubstr: "must start with '/'"},
+		{path: "/api?x=1", wantSubstr: "must not contain '?' or '#'"},
+		{path: "/api#top", wantSubstr: "must not contain '?' or '#'"},
+		{path: "//", wantSubstr: "has an empty segment"},
+		{path: "/api//v1", wantSubstr: "has an empty segment"},
+		{path: "/api//", wantSubstr: "has an empty segment"},
+		{path: "/api/./v1", wantSubstr: `has a dot segment "."`},
+		{path: "/api/../admin", wantSubstr: `has a dot segment ".."`},
+		{path: "/users/:", wantSubstr: "has an invalid parameter"},
+		{path: "/users/:user-id", wantSubstr: "has an invalid parameter"},
+		{path: "/files/*/meta", wantSubstr: "is not the last segment"},
+		{path: "/files/*file.name", wantSubstr: "has an invalid wildcard"},
+	}
+	for _, tt := range invalid {
+		assertErrorContains(t, validatePathPrefix(tt.path), tt.wantSubstr)
+	}
+}

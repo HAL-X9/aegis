@@ -1,6 +1,7 @@
 package validate
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -45,12 +46,8 @@ func validateRoute(route *schema.Route) error {
 		return fmt.Errorf("route validation failed: name is required and must not be blank")
 	}
 
-	if strings.TrimSpace(route.Match.PathPrefix) == "" {
-		return fmt.Errorf("route validation failed: match.path_prefix is required and must not be blank")
-	}
-
-	if route.Match.PathPrefix[0] != '/' {
-		return fmt.Errorf("route validation failed: match.path_prefix must start with '/'")
+	if err := validatePathPrefix(route.Match.PathPrefix); err != nil {
+		return fmt.Errorf("route validation failed: match.path_prefix %w", err)
 	}
 
 	for _, method := range route.Match.Methods {
@@ -70,4 +67,65 @@ func validateRoute(route *schema.Route) error {
 	}
 
 	return nil
+}
+
+// validatePathPrefix checks match.path_prefix syntax: "/" or "/"-separated
+// segments, each a literal, a ":name" parameter, or a "*" / "*name"
+// wildcard that must be the last segment. A single trailing slash is
+// allowed; normalization drops it.
+//
+// Empty and dot segments are rejected because request paths are
+// canonicalized before routing and never contain them.
+func validatePathPrefix(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("is required and must not be blank")
+	}
+	if path[0] != '/' {
+		return errors.New("must start with '/'")
+	}
+	if strings.ContainsAny(path, "?#") {
+		return fmt.Errorf("%q must not contain '?' or '#'", path)
+	}
+	if path == "/" {
+		return nil
+	}
+
+	segments := strings.Split(strings.TrimSuffix(path[1:], "/"), "/")
+	for i, segment := range segments {
+		switch {
+		case segment == "":
+			return fmt.Errorf("%q has an empty segment", path)
+		case segment == "." || segment == "..":
+			return fmt.Errorf("%q has a dot segment %q", path, segment)
+		case segment[0] == ':':
+			if !isParamName(segment[1:]) {
+				return fmt.Errorf("%q has an invalid parameter %q: want :name of letters, digits or '_'", path, segment)
+			}
+		case segment[0] == '*':
+			if i != len(segments)-1 {
+				return fmt.Errorf("%q has a wildcard %q that is not the last segment", path, segment)
+			}
+			if name := segment[1:]; name != "" && !isParamName(name) {
+				return fmt.Errorf("%q has an invalid wildcard %q: want * or *name of letters, digits or '_'", path, segment)
+			}
+		}
+	}
+
+	return nil
+}
+
+// isParamName reports whether name is a non-empty run of ASCII letters,
+// digits and '_'.
+func isParamName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		switch c := name[i]; {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }

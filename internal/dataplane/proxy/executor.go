@@ -84,8 +84,9 @@ func (executor *Executor) Publish(v *View) {
 }
 
 // buildUpstreamRequest builds the outbound request for route, carrying
-// over r's method, headers, body, and context, with the path/query
-// rewritten onto the route's upstream origin.
+// over r's method, headers, body, and context, with path (r's canonical
+// path, see request.CanonicalPath) and r's query rewritten onto the
+// route's upstream origin.
 //
 // Two corrections versus a naive `*out = *r`:
 //   - out.Header is r.Header.Clone(), not a shared reference. `*out = *r`
@@ -106,10 +107,15 @@ func (executor *Executor) Publish(v *View) {
 // with a different RoundTripper.
 //
 // release must be called exactly once when req is no longer needed.
-func (executor *Executor) buildUpstreamRequest(view *View, r *http.Request, route *snapshot.CompiledRoute) (req *http.Request, release func()) {
+func (executor *Executor) buildUpstreamRequest(view *View, r *http.Request, route *snapshot.CompiledRoute, path string) (req *http.Request, release func()) {
 	upstreamURL := *view.Engine.UpstreamURL(route)
-	upstreamURL.Path = r.URL.Path
-	upstreamURL.RawPath = r.URL.RawPath
+	upstreamURL.Path = path
+	if path == r.URL.Path {
+		// Unchanged path: keep the client's original percent-encoding. A
+		// canonicalized path is re-encoded from Path instead, since
+		// RawPath no longer describes it.
+		upstreamURL.RawPath = r.URL.RawPath
+	}
 	upstreamURL.RawQuery = r.URL.RawQuery
 
 	header := r.Header.Clone()
@@ -153,6 +159,9 @@ func (executor *Executor) buildUpstreamRequest(view *View, r *http.Request, rout
 //
 // Behavior:
 //   - returns 503 if no View has been published yet
+//   - returns 400 if the request path has no canonical form
+//     (see request.CanonicalPath); otherwise the canonical path is both
+//     routed and forwarded
 //   - returns 404 if no route matches the request path
 //   - returns 405 if no route supports the request method
 //   - returns 429 if the matched route's rate-limit policy rejects the request
@@ -176,6 +185,12 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	path, ok := request.CanonicalPath(r.URL)
+	if !ok {
+		http.Error(w, "bad request: invalid path", http.StatusBadRequest)
+		return
+	}
+
 	// Resolve the bitmask representation of the incoming HTTP method.
 	// Unsupported methods are rejected explicitly.
 	methodBit, ok := methodmask.MethodBit(r.Method)
@@ -196,7 +211,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		matchedRoute  *snapshot.CompiledRoute
 	)
 
-	view.Engine.Lookup(r.URL.Path, func(candidateIDs []snapshot.RouteID) bool {
+	view.Engine.Lookup(path, func(candidateIDs []snapshot.RouteID) bool {
 		pathMatched = true
 
 		for _, id := range candidateIDs {
@@ -249,7 +264,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, release := executor.buildUpstreamRequest(view, r, matchedRoute)
+	req, release := executor.buildUpstreamRequest(view, r, matchedRoute, path)
 	defer release()
 
 	headerNames := view.Engine.HeaderNames()

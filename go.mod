@@ -3,7 +3,6 @@ module github.com/HAL-X9/aegis
 go 1.27.0
 
 require (
-	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.24.1
 	golang.org/x/net v0.59.0
 	golang.org/x/sync v0.23.0

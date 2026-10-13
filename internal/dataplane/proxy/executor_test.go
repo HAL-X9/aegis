@@ -484,3 +484,54 @@ func TestExecutor(t *testing.T) {
 		}
 	})
 }
+
+func TestExecutorRoutesAndForwardsCanonicalPath(t *testing.T) {
+	engine := buildTestEngine(t, testConfig(
+		snapshot.CompiledRoute{
+			Name:    "public",
+			Service: 0,
+			Match:   snapshot.CompiledMatch{PathPrefix: "/public", Methods: methodmask.MethodAll},
+		},
+		snapshot.CompiledRoute{
+			Name:    "admin",
+			Service: 2,
+			Match:   snapshot.CompiledMatch{PathPrefix: "/admin", Methods: methodmask.MethodAll},
+		},
+	))
+
+	tests := []struct {
+		target     string
+		wantStatus int
+		wantURL    string // URL the upstream receives; empty when it must not be called
+	}{
+		{target: "/public/a%20b?q=1", wantStatus: http.StatusOK, wantURL: "http://upstream:8080/public/a%20b?q=1"},
+		{target: "/public/../admin?q=1", wantStatus: http.StatusOK, wantURL: "http://upstream:9090/admin?q=1"},
+		{target: "//admin", wantStatus: http.StatusOK, wantURL: "http://upstream:9090/admin"},
+		{target: "/public/./x/", wantStatus: http.StatusOK, wantURL: "http://upstream:8080/public/x/"},
+		{target: "/public%2F..%2Fadmin", wantStatus: http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.target, func(t *testing.T) {
+			var gotURL string
+			exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				gotURL = r.URL.String()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       http.NoBody,
+					Header:     make(http.Header),
+				}, nil
+			}))
+
+			rec := httptest.NewRecorder()
+			exec.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tt.target, nil))
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", rec.Code, tt.wantStatus)
+			}
+			if gotURL != tt.wantURL {
+				t.Fatalf("upstream URL = %q, want %q", gotURL, tt.wantURL)
+			}
+		})
+	}
+}

@@ -113,8 +113,6 @@ policies:
   headers:
     security-headers:
       request:
-        add:
-          X-Request-Id: "<generated-or-from-incoming>"
         remove:
           - X-Forwarded-For
           - X-Forwarded-Proto

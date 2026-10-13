@@ -1,11 +1,23 @@
 package router
 
-import "github.com/HAL-X9/aegis/internal/snapshot"
+import (
+	"strings"
+
+	"github.com/HAL-X9/aegis/internal/snapshot"
+)
 
 // RadixNode is a build-time radix trie node. It exists only while the
 // control plane constructs the routing table; the request hot path never
 // touches it — see FlatTrie in flat.go.
+//
+// Every static segment is stored together with its terminating '/', so
+// "/abc" and "/ab/c" diverge at "c" versus "/" instead of sharing a node.
+// A node therefore sits on a segment boundary exactly when it is the root,
+// a param or wildcard node, or its prefix ends in '/'. Only boundary nodes
+// carry candidates, paramChild, or wildcardChild.
 type RadixNode struct {
+	// prefix is a run of literal path bytes. It contains '/' only as its
+	// last byte, and only on a segment boundary.
 	prefix string
 
 	// Static edges. Children have unique first bytes.
@@ -24,7 +36,9 @@ type RadixTrie struct {
 	root *RadixNode
 }
 
-// Insert registers routeID under the provided normalized path.
+// Insert registers routeID under path, a validated and normalized route
+// path: "/" or "/"-separated segments, each a literal, a ":name" parameter,
+// or a trailing "*" / "*name" wildcard.
 //
 // Insert is a setup-time operation (route table construction), so it
 // favors correctness and real radix compression over avoiding
@@ -35,63 +49,60 @@ func (t *RadixTrie) Insert(path string, routeID snapshot.RouteID) {
 		t.root = &RadixNode{}
 	}
 	node := t.root
-	remaining := path
 
-	for len(remaining) > 0 {
-		if remaining[0] == '/' {
-			remaining = remaining[1:]
-			continue
-		}
-		segment, rest := nextSegment(remaining)
-		remaining = rest
+	for rest := strings.TrimPrefix(path, "/"); rest != ""; {
+		var segment string
+		segment, rest = cutSegment(rest)
 
-		switch segment[0] {
-		case ':':
+		switch {
+		case strings.HasPrefix(segment, ":"):
 			if node.paramChild == nil {
 				node.paramChild = &RadixNode{}
 			}
 			node = node.paramChild
-		case '*':
+		case strings.HasPrefix(segment, "*"):
 			if node.wildcardChild == nil {
 				node.wildcardChild = &RadixNode{}
 			}
 			node = node.wildcardChild
-			remaining = ""
+			// A wildcard consumes the rest of the request path, so nothing
+			// can follow it; validation rejects such routes upfront.
+			rest = ""
 		default:
-			node = insertStaticSegment(node, segment)
+			node = insertStatic(node, segment+"/")
 		}
 	}
 
 	node.candidates = append(node.candidates, routeID)
 }
 
-// insertStaticSegment / splitChild / findChildByFirstByte / nextSegment /
-// commonPrefixLen — unchanged from your original index_insert.go.
-func insertStaticSegment(node *RadixNode, segment string) *RadixNode {
-	for len(segment) > 0 {
-		idx, child := findChildByFirstByte(node, segment[0])
+// insertStatic inserts key below node with radix compression and returns
+// the node at which key ends.
+func insertStatic(node *RadixNode, key string) *RadixNode {
+	for len(key) > 0 {
+		idx, child := findChildByFirstByte(node, key[0])
 		if child == nil {
-			leaf := &RadixNode{prefix: segment}
+			leaf := &RadixNode{prefix: key}
 			node.children = append(node.children, leaf)
 			return leaf
 		}
 
-		common := commonPrefixLen(child.prefix, segment)
+		common := commonPrefixLen(child.prefix, key)
 
 		if common == len(child.prefix) {
 			node = child
-			segment = segment[common:]
+			key = key[common:]
 			continue
 		}
 
 		split := splitChild(node, idx, child, common)
 
-		segment = segment[common:]
-		if len(segment) == 0 {
+		key = key[common:]
+		if len(key) == 0 {
 			return split
 		}
 
-		leaf := &RadixNode{prefix: segment}
+		leaf := &RadixNode{prefix: key}
 		split.children = append(split.children, leaf)
 		return leaf
 	}
@@ -118,15 +129,6 @@ func findChildByFirstByte(node *RadixNode, b byte) (int, *RadixNode) {
 		}
 	}
 	return -1, nil
-}
-
-func nextSegment(path string) (segment, rest string) {
-	for i, b := range path {
-		if b == '/' {
-			return path[:i], path[i:]
-		}
-	}
-	return path, ""
 }
 
 func commonPrefixLen(a, b string) int {

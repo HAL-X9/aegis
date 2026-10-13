@@ -1,6 +1,7 @@
 package router
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/HAL-X9/aegis/internal/snapshot"
@@ -236,28 +237,6 @@ func TestFlatTrieLookup(t *testing.T) {
 		}
 	})
 
-	t.Run("leading slashes are ignored", func(t *testing.T) {
-		trie := &RadixTrie{}
-		trie.Insert("/api", snapshot.RouteID(42))
-
-		flat, err := Flatten(trie)
-		if err != nil {
-			t.Fatalf("Flatten failed: %v", err)
-		}
-
-		for _, path := range []string{"/api", "//api", "///api"} {
-			got := flatLookupIDs(flat, path)
-
-			if len(got) != 1 || got[0] != snapshot.RouteID(42) {
-				t.Fatalf(
-					"lookup(%q) = %#v, want [42]",
-					path,
-					got,
-				)
-			}
-		}
-	})
-
 	t.Run("unmatched path returns no candidates", func(t *testing.T) {
 		trie := &RadixTrie{}
 		trie.Insert("/api", snapshot.RouteID(1))
@@ -295,6 +274,59 @@ func TestFlatTrieLookup(t *testing.T) {
 			t.Fatalf("visit called %d times, want 1", calls)
 		}
 	})
+}
+
+func TestFlatTrieLookupSemantics(t *testing.T) {
+	tests := []struct {
+		name   string
+		routes []string
+		path   string
+		want   []snapshot.RouteID // nil means no match
+	}{
+		{name: "exact static", routes: []string{"/api"}, path: "/api", want: []snapshot.RouteID{0}},
+		{name: "trailing slash", routes: []string{"/api"}, path: "/api/", want: []snapshot.RouteID{0}},
+		{name: "prefix on segment boundary", routes: []string{"/api"}, path: "/api/v1/users", want: []snapshot.RouteID{0}},
+		{name: "no prefix inside a segment", routes: []string{"/api"}, path: "/apix"},
+		{name: "shorter path than route", routes: []string{"/api/v1"}, path: "/api"},
+
+		{name: "split node is not a segment boundary", routes: []string{"/abc", "/abd"}, path: "/ab/c"},
+		{name: "segment boundary beside split", routes: []string{"/abc", "/ab/c"}, path: "/ab/c", want: []snapshot.RouteID{1}},
+		{name: "longer sibling segment", routes: []string{"/ab/c", "/abc"}, path: "/abc", want: []snapshot.RouteID{1}},
+		{name: "shared prefix ending mid segment", routes: []string{"/abc", "/abd"}, path: "/ab"},
+
+		{name: "root matches itself", routes: []string{"/"}, path: "/", want: []snapshot.RouteID{0}},
+		{name: "root is a catch-all", routes: []string{"/"}, path: "/x/y", want: []snapshot.RouteID{0}},
+		{name: "specific route wins over root", routes: []string{"/", "/api"}, path: "/api/v1", want: []snapshot.RouteID{1}},
+		{name: "root catches what others miss", routes: []string{"/", "/api"}, path: "/other", want: []snapshot.RouteID{0}},
+
+		{name: "param does not match empty remainder", routes: []string{"/users/:id"}, path: "/users"},
+		{name: "wildcard matches empty remainder", routes: []string{"/files/*"}, path: "/files", want: []snapshot.RouteID{0}},
+		{name: "wildcard matches deep remainder", routes: []string{"/files/*"}, path: "/files/a/b", want: []snapshot.RouteID{0}},
+
+		{name: "empty segment never matches", routes: []string{"/api"}, path: "//api"},
+		{name: "empty segment stops prefix match", routes: []string{"/api"}, path: "/api//v1"},
+		{name: "relative path never matches", routes: []string{"/"}, path: "api"},
+		{name: "empty path never matches", routes: []string{"/"}, path: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			trie := &RadixTrie{}
+			for i, route := range tt.routes {
+				trie.Insert(route, snapshot.RouteID(i))
+			}
+
+			flat, err := Flatten(trie)
+			if err != nil {
+				t.Fatalf("Flatten failed: %v", err)
+			}
+
+			got := flatLookupIDs(flat, tt.path)
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("routes %q: lookup(%q) = %v, want %v", tt.routes, tt.path, got, tt.want)
+			}
+		})
+	}
 }
 
 func flatLookupIDs(

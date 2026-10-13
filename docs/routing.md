@@ -72,7 +72,8 @@ route indices are returned as a sub-slice of `routeRefs`, never copied.
 `internal/dataplane/router/engine.go` is the façade used by the proxy: it
 holds the flattened trie, the compiled route slice, and one parsed
 `*url.URL` per service (indexed by `snapshot.ServiceID`). It exposes
-`Lookup(path string) []uint32`, `Route(id uint32) *snapshot.CompiledRoute`,
+`Lookup(path string, visit func([]snapshot.RouteID) bool)`,
+`Route(id snapshot.RouteID) *snapshot.CompiledRoute`,
 and `UpstreamURL(route *snapshot.CompiledRoute) *url.URL`. Callers outside
 this package must not depend on `FlatTrie`, `FlatNode`, or `RadixTrie`
 internals.
@@ -99,13 +100,21 @@ Trie construction uses the literal `match.path_prefix` string from
 configuration (validated to start with `/`). Segments separated by `/` are
 processed in order:
 
-Static segments match exact byte equality, using radix compression: a
+Static segments match by exact byte equality, using radix compression: a
 shared prefix across multiple routes is stored once and split only where
-routes diverge. A segment whose first byte is `:` is evaluated through the
-single `ParamChild` edge at that depth; parameter names are not
+routes diverge. Each static segment is stored together with its
+terminating `/`, so a node whose prefix ends in `/` marks a segment
+boundary and `/abc` and `/ab/c` never share one. Only boundary nodes carry
+routes and `:`/`*` edges. A segment whose first byte is `:` is evaluated
+through the single `ParamChild` edge at that depth; parameter names are not
 distinguished during lookup. A segment whose first byte is `*` is
 evaluated through `WildcardChild`; lookup may return wildcard candidates
 without consuming the remainder of the path.
+
+`Lookup` expects a canonical request path (`request.CanonicalPath`, see
+`docs/routing-and-errors.md` §1.0). It never collapses `//` itself: an
+empty segment simply fails to match, so the router cannot route a path
+other than the one forwarded upstream.
 
 Lookup does not allocate: `FlatTrie.Lookup` walks indices into
 pre-allocated slices and returns a window into `routeRefs`. It returns

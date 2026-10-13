@@ -8,6 +8,23 @@ place in `executor.go`.
 
 ## 1. Route matching semantics
 
+### 1.0 The request path is canonicalized first
+
+Before routing, `request.CanonicalPath` resolves dot segments (`.`, `..`)
+and merges empty segments (`//`), per RFC 3986 §5.2.4, keeping a trailing
+slash. The canonical path is the one both routed **and** forwarded
+upstream, so a request can never match one route while addressing another
+resource:
+
+```
+/public/../admin   -> routed and forwarded as /admin
+/api//v1/./users   -> routed and forwarded as /api/v1/users
+```
+
+A path containing an encoded slash (`%2F`) has no unambiguous canonical
+form — the router would split on it, an upstream may not — and is rejected
+with `400`. Already-canonical paths are used as-is, without allocating.
+
 ### 1.1 `path_prefix` is a real prefix match
 
 A route's `path_prefix` matches:
@@ -25,10 +42,14 @@ does NOT match: /api/v1/profiles       (segment boundary, not a text prefix)
 ```
 
 Matching is segment-aware, not a raw string prefix: `/api/v1/profile` does
-**not** match `/api/v1/profiles`. The trie only ever compares whole path
-segments (`matchStaticSegment`), so there is no way for a shorter route to
-accidentally swallow a longer sibling segment that merely shares a text
-prefix.
+**not** match `/api/v1/profiles`. The trie stores every static segment
+together with its terminating `/` and compares whole segments
+(`FlatTrie.matchStatic`), so a route can never swallow a sibling segment
+that merely shares a text prefix, nor can `/ab/c` reach a route `/abc`.
+
+A trailing slash is equivalent to its absence (`/api/v1/profile/` matches
+like `/api/v1/profile`), and `path_prefix: /` matches every path, which
+makes it a catch-all for whatever no more specific route claims.
 
 If two registered routes are both valid prefixes of the same request path
 (e.g. `/api/v1` and `/api/v1/profile` for a request to
@@ -37,8 +58,11 @@ order below.
 
 ### 1.2 Param and wildcard segments
 
-- `:name` matches exactly one path segment and binds it as a parameter.
-- `*name` matches the remainder of the path, however many segments deep.
+- `:name` matches exactly one non-empty path segment. The name documents
+  the segment; it is not used for matching.
+- `*` or `*name` matches the remainder of the path, however many segments
+  deep, including none (`/files/*` matches `/files`). It must be the last
+  segment of a `path_prefix`.
 
 Both are also treated as prefixes in the same sense as 1.1: a route
 registered at a param/wildcard node is a valid fallback answer for any
@@ -98,6 +122,7 @@ reorder these without updating this document in the same change.
 | Status                        | Condition                                                                                                                                                                       | Notes                                                                                                        |
 |-------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
 | **503** Service Unavailable   | The routing engine is unavailable (`engine == nil`).                                                                                                                            | Startup/config-reload failure; never a per-route condition.                                                  |
+| **400** Bad Request           | The request path has no canonical form: it does not start with `/` or contains an encoded slash (`%2F`). See 1.0.                                                              | Returned before any route matching happens.                                                                  |
 | **500** Internal Server Error | The upstream transport is unavailable (`transport == nil`).                                                                                                                     | Configuration/bootstrap error, not a request-time condition.                                                 |
 | **400**/unsupported method    | The request method has no corresponding bit in `methodmask` (unrecognized HTTP method).                                                                                         | Returned before any route matching happens. Currently surfaced with a 405 status code — see open item below. |
 | **404** Not Found             | No route's path structure matches the request path at all, **or** a route's path matched but no candidate route at any priority tier had headers that satisfied its predicates. | See 2.1 for why the "headers didn't match" case is 404, not 405.                                             |

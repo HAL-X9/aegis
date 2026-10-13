@@ -47,7 +47,7 @@ func Build(config *schema.GatewayConfig) (*snapshot.CompiledConfig, error) {
 		return nil, fmt.Errorf("build compiled configuration: route build failed: %w", err)
 	}
 
-	compile.ApplyServiceRetries(routes, services)
+	compile.ApplyServicePolicies(routes, services)
 
 	policies, err := compile.Policies(normalizedPolicies)
 	if err != nil {

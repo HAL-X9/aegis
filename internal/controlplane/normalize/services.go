@@ -38,7 +38,11 @@ func Services(services schema.Services) (*ir.Services, error) {
 				Host:   strings.TrimSpace(service.Upstream.Host),
 				Port:   service.Upstream.Port,
 			},
-			Retries: ir.Retries{Attempts: attempts},
+			Timeout: service.Timeout,
+			Retries: ir.Retries{
+				Attempts:       attempts,
+				AttemptTimeout: service.Retries.AttemptTimeout,
+			},
 		}
 	}
 

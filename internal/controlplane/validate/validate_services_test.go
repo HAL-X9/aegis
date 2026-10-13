@@ -3,6 +3,7 @@ package validate
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/HAL-X9/aegis/internal/controlplane/schema"
 )
@@ -221,6 +222,49 @@ func TestValidateService(t *testing.T) {
 					Port:   65535,
 				},
 			},
+		},
+		{
+			name: "timeouts within bounds",
+			service: schema.Service{
+				Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
+				Timeout:  5 * time.Second,
+				Retries:  schema.Retries{Attempts: 3, AttemptTimeout: 2 * time.Second},
+			},
+		},
+		{
+			name: "attempt timeout without service timeout",
+			service: schema.Service{
+				Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
+				Retries:  schema.Retries{AttemptTimeout: time.Second},
+			},
+		},
+		{
+			name: "negative timeout",
+			service: schema.Service{
+				Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
+				Timeout:  -time.Second,
+			},
+			wantErr:    true,
+			wantSubstr: "timeout must not be negative",
+		},
+		{
+			name: "negative attempt timeout",
+			service: schema.Service{
+				Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
+				Retries:  schema.Retries{AttemptTimeout: -time.Second},
+			},
+			wantErr:    true,
+			wantSubstr: "retries.attempt_timeout must not be negative",
+		},
+		{
+			name: "attempt timeout exceeds timeout",
+			service: schema.Service{
+				Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
+				Timeout:  time.Second,
+				Retries:  schema.Retries{AttemptTimeout: 2 * time.Second},
+			},
+			wantErr:    true,
+			wantSubstr: "retries.attempt_timeout must not exceed timeout",
 		},
 	}
 

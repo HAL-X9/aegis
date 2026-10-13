@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -70,11 +72,11 @@ func (executor *Executor) Publish(v *View) {
 	executor.view.Store(v)
 }
 
-// newUpstreamRequest returns a shallow copy of r addressed to route's
-// upstream, with the canonical path, r's query, and a header built by
-// request.UpstreamHeader. It keeps r's context and body, sets Host to the
+// newUpstreamRequest returns a shallow copy of r with context ctx, addressed
+// to route's upstream, with the canonical path, r's query, and a header
+// built by request.UpstreamHeader. It keeps r's body, sets Host to the
 // upstream host, and clears RequestURI, which client requests must not set.
-func newUpstreamRequest(view *View, r *http.Request, route *snapshot.CompiledRoute, path string) *http.Request {
+func newUpstreamRequest(ctx context.Context, view *View, r *http.Request, route *snapshot.CompiledRoute, path string) *http.Request {
 	out := &upstreamRequest{url: *view.Engine.UpstreamURL(route)}
 	out.url.Path = path
 	if path == r.URL.Path {
@@ -84,7 +86,7 @@ func newUpstreamRequest(view *View, r *http.Request, route *snapshot.CompiledRou
 	}
 	out.url.RawQuery = r.URL.RawQuery
 
-	out.req = *r
+	out.req = *r.WithContext(ctx)
 	out.req.URL = &out.url
 	out.req.Host = out.url.Host
 	out.req.Header = request.UpstreamHeader(r)
@@ -103,7 +105,8 @@ func newUpstreamRequest(view *View, r *http.Request, route *snapshot.CompiledRou
 //   - returns 404 if no route matches the request path
 //   - returns 405 if no route supports the request method
 //   - returns 429 if the matched route's rate-limit policy rejects the request
-//   - returns 502 if upstream request execution fails
+//   - returns 504 if the upstream exchange times out (see isTimeout)
+//   - returns 502 if upstream request execution fails otherwise
 //   - retries idempotent body-less requests on transport errors and
 //     502/503/504 when the route's service configures more than one attempt
 //     (see internal/dataplane/retry); the rate limiter is checked once,
@@ -202,9 +205,16 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx := r.Context()
+	if timeout := matchedRoute.Policies.Timeout; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
 	// The X-Forwarded-* headers set by newUpstreamRequest precede the
 	// request policy, so the policy can override or remove them.
-	req := newUpstreamRequest(view, r, matchedRoute, path)
+	req := newUpstreamRequest(ctx, view, r, matchedRoute, path)
 	headerNames := view.Engine.HeaderNames()
 
 	policy.ExecuteMutations(req.Header, &matchedRoute.Policies.Headers.Request, headerNames)
@@ -214,9 +224,13 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	request.RemoveHopHeaders(req.Header)
 
 	// Every retry attempt reuses req as prepared above.
-	resp, err := retry.Do(executor.transport, req, matchedRoute.Policies.Retry.Attempts)
+	resp, err := retry.Do(executor.transport, req, matchedRoute.Policies.Retry)
 	if err != nil {
-		http.Error(w, "bad gateway: upstream request failed", http.StatusBadGateway)
+		if isTimeout(err) {
+			http.Error(w, "gateway timeout: upstream did not respond in time", http.StatusGatewayTimeout)
+		} else {
+			http.Error(w, "bad gateway: upstream request failed", http.StatusBadGateway)
+		}
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -234,4 +248,11 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer copyBufferPool.Put(buf)
 
 	_, _ = io.CopyBuffer(w, resp.Body, *buf)
+}
+
+// isTimeout reports whether err is a timeout: an expired service, attempt
+// or listener deadline, or a transport dial or response-header timeout.
+func isTimeout(err error) bool {
+	var timeout interface{ Timeout() bool }
+	return errors.As(err, &timeout) && timeout.Timeout()
 }

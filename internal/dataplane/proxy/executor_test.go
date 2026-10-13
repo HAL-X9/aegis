@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
@@ -531,6 +532,64 @@ func TestExecutorRoutesAndForwardsCanonicalPath(t *testing.T) {
 			}
 			if gotURL != tt.wantURL {
 				t.Fatalf("upstream URL = %q, want %q", gotURL, tt.wantURL)
+			}
+		})
+	}
+}
+
+// timeoutError is a transport error that reports itself as a timeout, like
+// net/http's response-header timeout or a dial timeout.
+type timeoutError struct{}
+
+func (timeoutError) Error() string { return "i/o timeout" }
+func (timeoutError) Timeout() bool { return true }
+
+func TestExecutorMapsUpstreamFailures(t *testing.T) {
+	tests := []struct {
+		name       string
+		timeout    time.Duration
+		roundTrip  roundTripFunc
+		wantStatus int
+	}{
+		{
+			name:    "service timeout expires",
+			timeout: 10 * time.Millisecond,
+			roundTrip: func(r *http.Request) (*http.Response, error) {
+				<-r.Context().Done()
+				return nil, r.Context().Err()
+			},
+			wantStatus: http.StatusGatewayTimeout,
+		},
+		{
+			name: "transport timeout",
+			roundTrip: func(*http.Request) (*http.Response, error) {
+				return nil, timeoutError{}
+			},
+			wantStatus: http.StatusGatewayTimeout,
+		},
+		{
+			name: "other transport failure",
+			roundTrip: func(*http.Request) (*http.Response, error) {
+				return nil, errors.New("connection refused")
+			},
+			wantStatus: http.StatusBadGateway,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			engine := buildTestEngine(t, testConfig(snapshot.CompiledRoute{
+				Name:     "api",
+				Match:    snapshot.CompiledMatch{PathPrefix: "/api", Methods: methodmask.MethodAll},
+				Policies: snapshot.CompiledRoutePolicies{RateLimitID: -1, Timeout: tt.timeout},
+			}))
+			exec := newTestExecutor(t, engine, tt.roundTrip)
+
+			rec := httptest.NewRecorder()
+			exec.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api", nil))
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", rec.Code, tt.wantStatus)
 			}
 		})
 	}

@@ -1,12 +1,16 @@
 package snapshot
 
+import "time"
+
 // ServiceID is a stable index into the compiled service table.
 type ServiceID uint32
 
 // CompiledRetry is the runtime retry policy. Attempts counts the first try;
-// values <= 1 mean no retries.
+// values <= 1 mean no retries. AttemptTimeout bounds each attempt, including
+// its response body; zero means none.
 type CompiledRetry struct {
-	Attempts int
+	Attempts       int
+	AttemptTimeout time.Duration
 }
 
 // CompiledService is the runtime representation of a backend service.
@@ -16,6 +20,10 @@ type CompiledService struct {
 
 	// Upstream is the precomputed upstream origin URL.
 	Upstream string
+
+	// Timeout bounds the whole upstream exchange, including retries and the
+	// response body; zero means none.
+	Timeout time.Duration
 
 	// Retry is the service's upstream retry policy.
 	Retry CompiledRetry

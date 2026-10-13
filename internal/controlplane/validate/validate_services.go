@@ -36,5 +36,17 @@ func validateService(service schema.Service) error {
 		return fmt.Errorf("route validation failed: upstream.port must be in range 1..65535")
 	}
 
+	if service.Timeout < 0 {
+		return fmt.Errorf("timeout must not be negative")
+	}
+
+	if service.Retries.AttemptTimeout < 0 {
+		return fmt.Errorf("retries.attempt_timeout must not be negative")
+	}
+
+	if service.Timeout > 0 && service.Retries.AttemptTimeout > service.Timeout {
+		return fmt.Errorf("retries.attempt_timeout must not exceed timeout")
+	}
+
 	return nil
 }

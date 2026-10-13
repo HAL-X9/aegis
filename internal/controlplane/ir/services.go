@@ -1,5 +1,7 @@
 package ir
 
+import "time"
+
 // Services represents the canonical collection of service definitions within
 // the normalized intermediate representation.
 //
@@ -11,6 +13,9 @@ type Services map[string]Service
 type Service struct {
 	// Upstream defines the normalized upstream destination configuration.
 	Upstream Upstream
+
+	// Timeout bounds the whole upstream exchange; zero means none.
+	Timeout time.Duration
 
 	// Retries defines the normalized upstream retry configuration.
 	Retries Retries
@@ -33,4 +38,7 @@ type Upstream struct {
 // counts the first try (1 means no retries).
 type Retries struct {
 	Attempts int
+
+	// AttemptTimeout bounds each attempt; zero means none.
+	AttemptTimeout time.Duration
 }

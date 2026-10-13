@@ -1,6 +1,10 @@
 package snapshot
 
-import "github.com/HAL-X9/aegis/internal/contracts/methodmask"
+import (
+	"time"
+
+	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
+)
 
 // RouteID is a stable index into CompiledConfig.Routes.
 type RouteID uint32
@@ -56,8 +60,11 @@ type HeaderPredicate struct {
 	AllowedValues []string
 }
 
+// CompiledRoutePolicies holds the policies applied to a matched request.
+// Timeout and Retry are copied from the route's service.
 type CompiledRoutePolicies struct {
 	Headers     CompiledHeaders
 	RateLimitID int32
+	Timeout     time.Duration
 	Retry       CompiledRetry
 }

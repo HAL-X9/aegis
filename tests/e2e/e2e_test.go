@@ -43,6 +43,9 @@ func newMockUpstream(t *testing.T) (srv *httptest.Server, capturedHeaders *http.
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
+	mux.HandleFunc("/api/v1/profile/slow", func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	})
 
 	srv = httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -131,6 +134,7 @@ services:
       scheme: http
       host: ` + host + `
       port: ` + strconv.Itoa(port) + `
+    timeout: 200ms
 
 routes:
   - name: user-profile
@@ -335,5 +339,23 @@ func TestGateway_SystemListenerReportsLiveness(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+}
+
+func TestGateway_ServiceTimeoutReturnsGatewayTimeout(t *testing.T) {
+	upstream, _ := newMockUpstream(t)
+	deps := bootstrapTestGateway(t, upstream)
+
+	gw := httptest.NewServer(deps.PublicHTTP.Handler)
+	t.Cleanup(gw.Close)
+
+	resp, err := http.Get(gw.URL + "/api/v1/profile/slow")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusGatewayTimeout {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusGatewayTimeout)
 	}
 }

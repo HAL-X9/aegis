@@ -54,6 +54,26 @@ The `upstream` field consists of three required fields:
 
 The service name (the key of the `services` map) is used solely as a reference within the configuration — in the `service` field of a route entry. It carries no other meaning.
 
+### Timeouts and retries
+
+A service may bound and retry its upstream requests:
+
+```yaml
+services:
+  user-profile:
+    upstream: ...
+    timeout: 5s
+    retries:
+      attempts: 3
+      attempt_timeout: 2s
+```
+
+- **timeout** — bounds the whole upstream exchange, including retries and the response body. Zero or absent means no service-level timeout; the listener's `request_timeout` still applies.
+- **retries.attempts** — the total number of tries, including the first (at most 5). Zero or one disables retries. Only body-less requests with idempotent methods are retried, after a transport error, an expired attempt, or a 502, 503 or 504 response.
+- **retries.attempt_timeout** — bounds each attempt, including its response body. It must not exceed `timeout`.
+
+When a timeout expires, the gateway responds `504 Gateway Timeout`.
+
 ## The `routes` section
 
 The `routes` section is an ordered list of routing rules. Each rule ties a matching condition (`match`) to a target service and a set of policies.

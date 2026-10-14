@@ -69,3 +69,5 @@ Aegis is pre-1.0 and under active development. Public interfaces and configurati
 - [docs/routing.md](docs/routing.md) — routing engine architecture
 - [docs/routing-and-errors.md](docs/routing-and-errors.md) — route matching semantics and the error-response contract
 - [docs/policies.md](docs/policies.md) — policy engine and header mutations
+- [docs/runtime-configuration.md](docs/runtime-configuration.md) — process-level configuration: listeners, TLS, timeouts, upstream transport
+- [docs/testing.md](docs/testing.md) — test layers, benchmarks, linting, coverage and manual checks

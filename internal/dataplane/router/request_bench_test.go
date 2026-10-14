@@ -43,7 +43,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
+	"github.com/HAL-X9/aegis/internal/httpmethod"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
@@ -110,14 +110,14 @@ func buildBenchEngine(
 ) (*Engine, string) {
 	tb.Helper()
 
-	var mask methodmask.MethodMask
+	var mask httpmethod.Mask
 
 	switch mm {
 	case methodUnrestricted:
-		mask = methodmask.MethodAll
+		mask = httpmethod.All
 
 	case methodRestricted:
-		mask = methodmask.MethodGET | methodmask.MethodPOST
+		mask = httpmethod.GET | httpmethod.POST
 	}
 
 	var preds []snapshot.HeaderPredicate
@@ -232,7 +232,7 @@ func buildDeepBenchEngine(tb testing.TB, size int) (*Engine, string) {
 			Service: snapshot.ServiceID(i),
 			Match: snapshot.CompiledMatch{
 				PathPrefix: path,
-				Methods:    methodmask.MethodAll,
+				Methods:    httpmethod.All,
 			},
 		})
 	}
@@ -271,8 +271,8 @@ func buildDeepBenchEngine(tb testing.TB, size int) (*Engine, string) {
 	return engine, path
 }
 
-func requestMethodBit(method string) methodmask.MethodMask {
-	bit, _ := methodmask.MethodBit(method)
+func requestMethodBit(method string) httpmethod.Mask {
+	bit, _ := httpmethod.Bit(method)
 	return bit
 }
 
@@ -395,7 +395,7 @@ func buildMixedBenchEngine(
 			Service: snapshot.ServiceID(idx),
 			Match: snapshot.CompiledMatch{
 				PathPrefix: pathPrefix,
-				Methods:    methodmask.MethodAll,
+				Methods:    httpmethod.All,
 			},
 		})
 
@@ -639,7 +639,7 @@ func BenchmarkHeadersMatch(b *testing.B) {
 // method+header matching matchRequest needs below.
 type requestMatcher struct {
 	engine    *Engine
-	methodBit methodmask.MethodMask
+	methodBit httpmethod.Mask
 	headers   http.Header
 	matched   *snapshot.CompiledRoute
 }

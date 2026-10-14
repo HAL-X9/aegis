@@ -2,6 +2,7 @@ package validate
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/HAL-X9/aegis/internal/controlplane/schema"
@@ -13,9 +14,9 @@ func validatePolicies(policy *schema.Policies) error {
 		return fmt.Errorf("policies configuration must not be nil")
 	}
 
-	// Policy names are the keys of the headers map. Uniqueness is therefore
-	// guaranteed by the YAML decoder (duplicate keys collapse into one entry);
-	// here we only reject empty names, which the spec disallows.
+	// Policy names are the keys of the headers map. Uniqueness is guaranteed
+	// by the YAML decoder, which rejects duplicate keys; here we only reject
+	// empty names.
 	for policyName, headers := range policy.Headers {
 		if policyName == "" {
 			return fmt.Errorf("policy name under policies.headers must not be empty")
@@ -24,6 +25,27 @@ func validatePolicies(policy *schema.Policies) error {
 		if err := validateHeaders(policyName, &headers); err != nil {
 			return fmt.Errorf("headers validation failed in policy %q: %w", policyName, err)
 		}
+	}
+
+	for policyName, rateLimit := range policy.RateLimits {
+		if err := validateRateLimit(rateLimit); err != nil {
+			return fmt.Errorf("rate limit %q is invalid: %w", policyName, err)
+		}
+	}
+
+	return nil
+}
+
+// validateRateLimit requires rate to be a finite positive number of requests
+// per second, and burst to allow at least one request. A zero burst would
+// reject every request, which is never what a configured limit means.
+func validateRateLimit(rateLimit schema.RateLimit) error {
+	if math.IsNaN(rateLimit.Rate) || math.IsInf(rateLimit.Rate, 0) || rateLimit.Rate <= 0 {
+		return fmt.Errorf("rate must be a positive finite number, got %v", rateLimit.Rate)
+	}
+
+	if rateLimit.Burst < 1 {
+		return fmt.Errorf("burst must be at least 1, got %d", rateLimit.Burst)
 	}
 
 	return nil

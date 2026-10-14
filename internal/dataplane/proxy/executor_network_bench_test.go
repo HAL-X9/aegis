@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
+	"github.com/HAL-X9/aegis/internal/httpmethod"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
@@ -120,7 +120,7 @@ func buildE2EBenchEngine(tb testing.TB, upstreamURL string) *router.Engine {
 				Service: snapshot.ServiceID(0),
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/api/v1/profile",
-					Methods:    methodmask.MethodAll,
+					Methods:    httpmethod.All,
 				},
 			},
 		},

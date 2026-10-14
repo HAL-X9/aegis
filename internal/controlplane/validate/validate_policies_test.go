@@ -1,6 +1,7 @@
 package validate
 
 import (
+	"math"
 	"testing"
 
 	"github.com/HAL-X9/aegis/internal/controlplane/schema"
@@ -368,6 +369,43 @@ func TestValidateHeaderName_invalidNames(t *testing.T) {
 				t.Fatalf("validateHeaderName(%q): expected error, got nil", tt.headerName)
 			}
 			assertErrorContains(t, err, "invalid header name")
+		})
+	}
+}
+
+func TestValidatePolicies_rateLimits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		rateLimit schema.RateLimit
+		wantErr   string
+	}{
+		{name: "valid", rateLimit: schema.RateLimit{Rate: 100, Burst: 1}},
+		{name: "fractional rate", rateLimit: schema.RateLimit{Rate: 0.5, Burst: 1}},
+		{name: "zero rate", rateLimit: schema.RateLimit{Rate: 0, Burst: 1}, wantErr: "rate must be a positive finite number"},
+		{name: "negative rate", rateLimit: schema.RateLimit{Rate: -1, Burst: 1}, wantErr: "rate must be a positive finite number"},
+		{name: "infinite rate", rateLimit: schema.RateLimit{Rate: math.Inf(1), Burst: 1}, wantErr: "rate must be a positive finite number"},
+		{name: "NaN rate", rateLimit: schema.RateLimit{Rate: math.NaN(), Burst: 1}, wantErr: "rate must be a positive finite number"},
+		{name: "zero burst", rateLimit: schema.RateLimit{Rate: 100, Burst: 0}, wantErr: "burst must be at least 1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validatePolicies(&schema.Policies{
+				RateLimits: map[string]schema.RateLimit{"rl": tt.rateLimit},
+			})
+
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+
+			assertErrorContains(t, err, `rate limit "rl" is invalid`, tt.wantErr)
 		})
 	}
 }

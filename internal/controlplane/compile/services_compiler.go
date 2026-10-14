@@ -1,7 +1,6 @@
 package compile
 
 import (
-	"fmt"
 	"net"
 	"net/url"
 	"sort"
@@ -11,11 +10,7 @@ import (
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
-func Services(services ir.Services) (snapshot.CompiledServices, map[string]snapshot.ServiceID, error) {
-	if services == nil {
-		return snapshot.CompiledServices{}, nil, fmt.Errorf("failed to compile services: services input is nil")
-	}
-
+func Services(services ir.Services) (snapshot.CompiledServices, map[string]snapshot.ServiceID) {
 	serviceName := make([]string, 0, len(services))
 	for name := range services {
 		serviceName = append(serviceName, name)
@@ -43,7 +38,7 @@ func Services(services ir.Services) (snapshot.CompiledServices, map[string]snaps
 
 	return snapshot.CompiledServices{
 		Items: compiledServices,
-	}, serviceIDs, nil
+	}, serviceIDs
 }
 
 func upstreamOriginURL(upstream ir.Upstream) *url.URL {

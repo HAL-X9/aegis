@@ -5,9 +5,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
 	"github.com/HAL-X9/aegis/internal/controlplane/compile"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
+	"github.com/HAL-X9/aegis/internal/httpmethod"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
@@ -17,9 +17,9 @@ import (
 func buildTestEngine(t *testing.T) *router.Engine {
 	t.Helper()
 
-	getBit, ok := methodmask.MethodBit(http.MethodGet)
+	getBit, ok := httpmethod.Bit(http.MethodGet)
 	if !ok {
-		t.Fatalf("methodmask.MethodBit(%q): not recognized", http.MethodGet)
+		t.Fatalf("httpmethod.Bit(%q): not recognized", http.MethodGet)
 	}
 
 	cfg := &snapshot.CompiledConfig{
@@ -60,7 +60,7 @@ func buildTestEngine(t *testing.T) *router.Engine {
 // to observe the same outcome (path miss / method miss / header miss /
 // full match) without depending on the executor's HTTP wiring.
 func resolve(engine *router.Engine, method, path string, headers http.Header) (pathMatched, methodMatched bool, matched *snapshot.CompiledRoute) {
-	methodBit, ok := methodmask.MethodBit(method)
+	methodBit, ok := httpmethod.Bit(method)
 	if !ok {
 		return false, false, nil
 	}

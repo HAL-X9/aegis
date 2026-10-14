@@ -60,10 +60,7 @@ const (
 //
 // Layout is intentionally cache-friendly.
 //
-// Value fields are used only for Set/AddIfAbsent.
-//
-// ValueOffset/ValueLength reference bytes inside
-// CompiledHeadersPlan.Values blob.
+// Value is used only for Set/AddIfAbsent.
 type HeaderInstruction struct {
 	HeaderID HeaderID
 	Op       HeaderOpCode
@@ -82,7 +79,6 @@ type HeaderInstruction struct {
 //   - canonicalization
 //   - conflict detection
 //   - operation ordering
-//   - value blob packing
 //
 // Runtime responsibilities:
 //   - sequential execution only
@@ -114,7 +110,7 @@ type CompiledHeaders struct {
 //
 // No maps on hot path.
 type HeaderRegistry struct {
-	Names [][]byte
+	Names []string
 }
 
 type CompiledRateLimit struct {
@@ -122,7 +118,9 @@ type CompiledRateLimit struct {
 	Burst int
 }
 
+// CompiledPolicies holds the compiled rate-limit definitions. Header policies
+// are not kept here: each route's header plan is merged from its referenced
+// policies and stored in CompiledRoutePolicies.Headers.
 type CompiledPolicies struct {
-	Headers    []CompiledHeaders
 	RateLimits []CompiledRateLimit
 }

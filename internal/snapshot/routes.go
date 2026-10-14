@@ -3,7 +3,7 @@ package snapshot
 import (
 	"time"
 
-	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
+	"github.com/HAL-X9/aegis/internal/httpmethod"
 )
 
 // RouteID is a stable index into CompiledConfig.Routes.
@@ -36,7 +36,7 @@ type CompiledMatch struct {
 
 	// Methods is a bitmask representing allowed HTTP methods.
 	// Bitwise operations are used for O(1) evaluation in the dataplane.
-	Methods methodmask.MethodMask
+	Methods httpmethod.Mask
 
 	// Headers is a simplified equality-based predicate.
 	// NOTE: This is intentionally not a full expression system for performance reasons.

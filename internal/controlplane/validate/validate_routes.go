@@ -6,19 +6,8 @@ import (
 	"strings"
 
 	"github.com/HAL-X9/aegis/internal/controlplane/schema"
+	"github.com/HAL-X9/aegis/internal/httpmethod"
 )
-
-// allowedHTTPMethods defines the set of supported HTTP methods
-// accepted in route match configuration.
-var allowedHTTPMethods = map[string]struct{}{
-	"GET":     {},
-	"POST":    {},
-	"PUT":     {},
-	"DELETE":  {},
-	"PATCH":   {},
-	"OPTIONS": {},
-	"HEAD":    {},
-}
 
 // validateRoutes validates a collection of routes.
 // It returns the first encountered validation error with the corresponding index.
@@ -51,18 +40,24 @@ func validateRoute(route *schema.Route) error {
 	}
 
 	for _, method := range route.Match.Methods {
-		if _, ok := allowedHTTPMethods[method]; !ok {
+		if _, ok := httpmethod.Bit(method); !ok {
 			return fmt.Errorf("route validation failed: match.methods contains unsupported method %q", method)
 		}
 	}
 
-	for k := range route.Match.Headers {
+	for k, values := range route.Match.Headers {
 		if strings.TrimSpace(k) == "" {
 			return fmt.Errorf("invalid header key: empty string")
 		}
 
 		if len(k) > 256 {
 			return fmt.Errorf("invalid header key %q: exceeds 256 characters", k)
+		}
+
+		for _, value := range values {
+			if value == "" {
+				return fmt.Errorf("invalid header key %q: contains an empty allowed value", k)
+			}
 		}
 	}
 

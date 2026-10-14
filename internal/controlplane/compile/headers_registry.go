@@ -31,7 +31,7 @@ var wellKnownHeaderIDs = map[string]snapshot.HeaderID{
 // same config build.
 type HeaderRegistryBuilder struct {
 	dynamic map[string]snapshot.HeaderID
-	names   [][]byte
+	names   []string
 }
 
 // NewHeaderRegistryBuilder returns an empty builder, ready to be passed to
@@ -53,7 +53,7 @@ func (b *HeaderRegistryBuilder) resolve(name string) snapshot.HeaderID {
 
 	id := snapshot.HeaderDynamicStart + snapshot.HeaderID(len(b.names))
 	b.dynamic[name] = id
-	b.names = append(b.names, []byte(name))
+	b.names = append(b.names, name)
 
 	return id
 }

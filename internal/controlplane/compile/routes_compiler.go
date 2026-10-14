@@ -5,8 +5,8 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
 	"github.com/HAL-X9/aegis/internal/controlplane/ir"
+	"github.com/HAL-X9/aegis/internal/httpmethod"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
@@ -19,6 +19,11 @@ import (
 // snapshot.HeaderID; pass the same builder to every Routes call for one
 // config build, then attach headerIDs.Registry() to
 // snapshot.CompiledConfig.HeaderNames — see headers_registry.go.
+//
+// The input must have passed validate, which rejects unknown services and
+// policies, empty predicate values, and conflicting header policies. The
+// errors returned here are invariant checks that cannot occur for validated
+// input; they guard against building an ambiguous plan.
 //
 // Key properties of the output:
 //   - fully precomputed (no parsing in runtime path)
@@ -35,19 +40,12 @@ func Routes(headerIDs *HeaderRegistryBuilder, serviceIDs map[string]snapshot.Ser
 			return nil, fmt.Errorf("route %q references unknown service %q", route.Name, route.Service)
 		}
 
-		methodMask, err := methodmask.BuildMethodMask(route.Match.Methods)
+		methodMask, err := httpmethod.MaskOf(route.Match.Methods)
 		if err != nil {
 			return nil, fmt.Errorf("route %q: compile method mask: %w", route.Name, err)
 		}
 
-		headerPredicates, err := headersPredicate(route.Match.Headers)
-		if err != nil {
-			return nil, fmt.Errorf("route %q: compile headers predicate: %w", route.Name, err)
-		}
-
-		if err = validatePolicyRefsExist(route.Policies, policies); err != nil {
-			return nil, fmt.Errorf("route %q: %w", route.Name, err)
-		}
+		headerPredicates := headersPredicate(route.Match.Headers)
 
 		headers, err := compileRoutePolicyHeaders(headerIDs, route.Policies, policies)
 		if err != nil {
@@ -83,16 +81,13 @@ func Routes(headerIDs *HeaderRegistryBuilder, serviceIDs map[string]snapshot.Ser
 // predicate is evaluated against http.Header by name
 // (internal/dataplane/router.HeadersMatch), never through a HeaderID, so
 // it needs no registry.
-func headersPredicate(headers map[string][]string) ([]snapshot.HeaderPredicate, error) {
+func headersPredicate(headers map[string][]string) []snapshot.HeaderPredicate {
 	if len(headers) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	keys := make([]string, 0, len(headers))
 	for name := range headers {
-		if name == "" {
-			return nil, fmt.Errorf("header name cannot be empty")
-		}
 		keys = append(keys, name)
 	}
 	sort.Strings(keys)
@@ -113,9 +108,6 @@ func headersPredicate(headers map[string][]string) ([]snapshot.HeaderPredicate, 
 		clean := make([]string, 0, len(values))
 
 		for _, value := range values {
-			if value == "" {
-				return nil, fmt.Errorf("header %q contains empty allowed value", name)
-			}
 			if _, ok := uniq[value]; ok {
 				continue
 			}
@@ -129,27 +121,7 @@ func headersPredicate(headers map[string][]string) ([]snapshot.HeaderPredicate, 
 		})
 	}
 
-	return predicates, nil
-}
-
-func validatePolicyRefsExist(refs []ir.PolicyRef, policies *ir.Policies) error {
-	if len(refs) == 0 {
-		return nil
-	}
-	if policies == nil {
-		return fmt.Errorf("policy references require normalized policies")
-	}
-
-	for _, ref := range refs {
-		_, isHeaders := policies.Headers[ref.Name]
-		_, isRateLimit := policies.RateLimits[ref.Name]
-
-		if !isHeaders && !isRateLimit {
-			return fmt.Errorf("references unknown policy %q", ref.Name)
-		}
-	}
-
-	return nil
+	return predicates
 }
 
 // compileRoutePolicyHeaders merges every headers-policy a route

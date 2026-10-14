@@ -7,6 +7,13 @@ import (
 	"github.com/HAL-X9/aegis/internal/controlplane/schema"
 )
 
+// testServices is the service table every route fixture refers to.
+func testServices() schema.Services {
+	return schema.Services{
+		"api": {Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080}},
+	}
+}
+
 func TestValidate(t *testing.T) {
 	t.Parallel()
 
@@ -21,7 +28,7 @@ func TestValidate(t *testing.T) {
 	t.Run("nil routes slice", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := Validate(&schema.GatewayConfig{Routes: nil})
+		_, err := Validate(&schema.GatewayConfig{Services: testServices(), Routes: nil})
 
 		assertErrorContains(t, err,
 			"gateway config validation failed: routes are invalid",
@@ -33,7 +40,8 @@ func TestValidate(t *testing.T) {
 		t.Parallel()
 
 		_, err := Validate(&schema.GatewayConfig{
-			Routes: []schema.Route{},
+			Services: testServices(),
+			Routes:   []schema.Route{},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -44,10 +52,12 @@ func TestValidate(t *testing.T) {
 		t.Parallel()
 
 		cfg := &schema.GatewayConfig{
+			Services: testServices(),
 			Routes: []schema.Route{
 				{
-					Name:  "api",
-					Match: schema.Match{PathPrefix: "/api"},
+					Name:    "api",
+					Service: "api",
+					Match:   schema.Match{PathPrefix: "/api"},
 				},
 			},
 		}
@@ -61,9 +71,11 @@ func TestValidate(t *testing.T) {
 		t.Parallel()
 
 		cfg := &schema.GatewayConfig{
+			Services: testServices(),
 			Routes: []schema.Route{
 				{
-					Name: "full",
+					Name:    "full",
+					Service: "api",
 					Match: schema.Match{
 						PathPrefix: "/v1/",
 						Methods: []string{
@@ -89,6 +101,7 @@ func TestValidate(t *testing.T) {
 		t.Parallel()
 
 		cfg := &schema.GatewayConfig{
+			Services: testServices(),
 			Routes: []schema.Route{
 				{
 					Name:  "ok",
@@ -203,6 +216,22 @@ func TestValidate_routeFields(t *testing.T) {
 				"exceeds 256 characters",
 			},
 		},
+		{
+			name: "empty allowed header value",
+			route: schema.Route{
+				Name:    "r",
+				Service: "api",
+				Match: schema.Match{
+					PathPrefix: "/",
+					Headers: map[string][]string{
+						"Authorization": {"Bearer token", ""},
+					},
+				},
+			},
+			wantSubstr: []string{
+				`invalid header key "Authorization": contains an empty allowed value`,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -210,7 +239,8 @@ func TestValidate_routeFields(t *testing.T) {
 			t.Parallel()
 
 			_, err := Validate(&schema.GatewayConfig{
-				Routes: []schema.Route{tt.route},
+				Services: testServices(),
+				Routes:   []schema.Route{tt.route},
 			})
 
 			assertErrorContains(t, err, append([]string{
@@ -289,6 +319,7 @@ func TestValidate_errorWrapping(t *testing.T) {
 	t.Parallel()
 
 	_, err := Validate(&schema.GatewayConfig{
+		Services: testServices(),
 		Routes: []schema.Route{
 			{
 				Name: "bad",

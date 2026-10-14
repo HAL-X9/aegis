@@ -7,6 +7,9 @@ import (
 	"github.com/HAL-X9/aegis/internal/controlplane/schema"
 )
 
+// maxRetryAttempts bounds retry amplification against a struggling upstream.
+const maxRetryAttempts = 5
+
 func validateServices(services schema.Services) error {
 	for name, service := range services {
 		if err := validateService(service); err != nil {
@@ -38,6 +41,10 @@ func validateService(service schema.Service) error {
 
 	if service.Timeout < 0 {
 		return fmt.Errorf("timeout must not be negative")
+	}
+
+	if service.Retries.Attempts < 0 || service.Retries.Attempts > maxRetryAttempts {
+		return fmt.Errorf("retries.attempts must be between 0 and %d, got %d", maxRetryAttempts, service.Retries.Attempts)
 	}
 
 	if service.Retries.AttemptTimeout < 0 {

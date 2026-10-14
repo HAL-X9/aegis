@@ -42,7 +42,7 @@ func resolveHeaderName(id snapshot.HeaderID, names *snapshot.HeaderRegistry) str
 		if names == nil || i < 0 || i >= len(names.Names) {
 			return ""
 		}
-		return string(names.Names[i])
+		return names.Names[i]
 	}
 }
 

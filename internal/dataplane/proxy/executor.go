@@ -10,12 +10,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/request"
 	"github.com/HAL-X9/aegis/internal/dataplane/retry"
 	"github.com/HAL-X9/aegis/internal/dataplane/routelabel"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
+	"github.com/HAL-X9/aegis/internal/httpmethod"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
@@ -134,7 +134,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Resolve the bitmask representation of the incoming HTTP method.
 	// Unsupported methods are rejected explicitly.
-	methodBit, ok := methodmask.MethodBit(r.Method)
+	methodBit, ok := httpmethod.Bit(r.Method)
 	if !ok {
 		http.Error(w, "unsupported HTTP method", http.StatusMethodNotAllowed)
 		return

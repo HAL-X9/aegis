@@ -19,22 +19,11 @@ func Build(validated validate.Validated) (*snapshot.CompiledConfig, error) {
 		return nil, fmt.Errorf("build compiled configuration: gateway config is nil")
 	}
 
-	normalizedServices, err := normalize.Services(config.Services)
-	if err != nil {
-		return nil, fmt.Errorf("build compiled configuration: service normalization failed: %w", err)
-	}
-
+	normalizedServices := normalize.Services(config.Services)
 	normalizedRoutes := normalize.Routes(config.Routes)
+	normalizedPolicies := normalize.Policies(&config.Policies)
 
-	normalizedPolicies, err := normalize.Policies(&config.Policies)
-	if err != nil {
-		return nil, fmt.Errorf("build compiled configuration: policy normalization failed: %w", err)
-	}
-
-	services, serviceIDs, err := compile.Services(*normalizedServices)
-	if err != nil {
-		return nil, fmt.Errorf("build compiled configuration: service compilation failed: %w", err)
-	}
+	services, serviceIDs := compile.Services(normalizedServices)
 
 	headerIDs := compile.NewHeaderRegistryBuilder()
 

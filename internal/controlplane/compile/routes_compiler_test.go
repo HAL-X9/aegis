@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
 	"github.com/HAL-X9/aegis/internal/controlplane/ir"
+	"github.com/HAL-X9/aegis/internal/httpmethod"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
@@ -51,7 +51,7 @@ func TestRoutes(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		methodMask, err := methodmask.BuildMethodMask([]string{"GET", "POST"})
+		methodMask, err := httpmethod.MaskOf([]string{"GET", "POST"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -132,8 +132,8 @@ func TestRoutes(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if got := out[0].Match.Methods; got != methodmask.MethodAll {
-			t.Fatalf("Methods = %#v, want MethodAll (%#v)", got, methodmask.MethodAll)
+		if got := out[0].Match.Methods; got != httpmethod.All {
+			t.Fatalf("Methods = %#v, want httpmethod.All (%#v)", got, httpmethod.All)
 		}
 
 		if got := out[0].Policies.RateLimitID; got != -1 {
@@ -177,7 +177,7 @@ func TestRoutes(t *testing.T) {
 		}
 
 		if !strings.Contains(err.Error(), "unsupported HTTP method") {
-			t.Fatalf("error should wrap methodmask error: %v", err)
+			t.Fatalf("error should wrap httpmethod error: %v", err)
 		}
 	})
 
@@ -293,16 +293,13 @@ func TestRoutes_headersPredicate(t *testing.T) {
 	})
 
 	t.Run("duplicate allowed values are removed", func(t *testing.T) {
-		got, err := headersPredicate(map[string][]string{
+		got := headersPredicate(map[string][]string{
 			"Authorization": {
 				"Bearer token",
 				"Bearer token",
 				"Basic credentials",
 			},
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		want := []snapshot.HeaderPredicate{
 			{
@@ -319,67 +316,9 @@ func TestRoutes_headersPredicate(t *testing.T) {
 		}
 	})
 
-	t.Run("empty header name returns error", func(t *testing.T) {
-		_, err := headersPredicate(map[string][]string{
-			"": {"value"},
-		})
-		if err == nil {
-			t.Fatal("expected error")
-		}
-
-		if !strings.Contains(err.Error(), "header name cannot be empty") {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("empty allowed value returns error", func(t *testing.T) {
-		_, err := headersPredicate(map[string][]string{
-			"Authorization": {"Bearer token", ""},
-		})
-		if err == nil {
-			t.Fatal("expected error")
-		}
-
-		if !strings.Contains(err.Error(), `header "Authorization" contains empty allowed value`) {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
 }
 
 func TestRoutes_policyReferences(t *testing.T) {
-	t.Run("unknown policy returns error", func(t *testing.T) {
-		headerIDs := newTestHeaderRegistry()
-
-		routes := []ir.Route{
-			{
-				Name:    "api",
-				Service: "api-service",
-				Policies: []ir.PolicyRef{
-					{Name: "missing"},
-				},
-			},
-		}
-
-		serviceIDs := map[string]snapshot.ServiceID{
-			"api-service": 0,
-		}
-
-		policies := &ir.Policies{}
-
-		_, err := Routes(headerIDs, serviceIDs, routes, policies)
-		if err == nil {
-			t.Fatal("expected error")
-		}
-
-		if !strings.Contains(err.Error(), `route "api"`) {
-			t.Fatalf("error should mention route: %v", err)
-		}
-
-		if !strings.Contains(err.Error(), `references unknown policy "missing"`) {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
 	t.Run("references require policies", func(t *testing.T) {
 		headerIDs := newTestHeaderRegistry()
 
@@ -544,36 +483,6 @@ func TestRoutes_headerPolicies(t *testing.T) {
 		}
 	})
 
-	t.Run("unknown referenced header policy is rejected before compilation", func(t *testing.T) {
-		headerIDs := newTestHeaderRegistry()
-
-		routes := []ir.Route{
-			{
-				Name:    "api",
-				Service: "api-service",
-				Policies: []ir.PolicyRef{
-					{Name: "missing"},
-				},
-			},
-		}
-
-		serviceIDs := map[string]snapshot.ServiceID{
-			"api-service": 0,
-		}
-
-		policies := &ir.Policies{
-			Headers: map[string]ir.Headers{},
-		}
-
-		_, err := Routes(headerIDs, serviceIDs, routes, policies)
-		if err == nil {
-			t.Fatal("expected error")
-		}
-
-		if !strings.Contains(err.Error(), `references unknown policy "missing"`) {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
 }
 
 func TestRoutes_rateLimitPolicy(t *testing.T) {

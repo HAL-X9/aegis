@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
+	"github.com/HAL-X9/aegis/internal/httpmethod"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
@@ -168,7 +168,7 @@ func buildProxyBenchEngine(tb testing.TB) *router.Engine {
 				Service: snapshot.ServiceID(0),
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/api/v1/profile",
-					Methods:    methodmask.MethodAll,
+					Methods:    httpmethod.All,
 				},
 			},
 		},
@@ -200,7 +200,7 @@ func buildProxyBenchEngineWithPolicy(tb testing.TB) *router.Engine {
 				Service: snapshot.ServiceID(0),
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/api/v1/profile",
-					Methods:    methodmask.MethodAll,
+					Methods:    httpmethod.All,
 				},
 				Policies: snapshot.CompiledRoutePolicies{
 					RateLimitID: -1,
@@ -451,7 +451,7 @@ func buildProxyBenchEngineWithUpstream(
 				Service: snapshot.ServiceID(0),
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/api/v1/profile",
-					Methods:    methodmask.MethodAll,
+					Methods:    httpmethod.All,
 				},
 			},
 		},

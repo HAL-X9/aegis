@@ -292,3 +292,25 @@ func TestValidateService(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateServices_retryAttempts(t *testing.T) {
+	t.Parallel()
+
+	for _, attempts := range []int{-1, maxRetryAttempts + 1} {
+		svc := testServices()["api"]
+		svc.Retries.Attempts = attempts
+
+		err := validateServices(schema.Services{"api": svc})
+
+		assertErrorContains(t, err, "retries.attempts must be between 0 and 5")
+	}
+
+	for _, attempts := range []int{0, 1, maxRetryAttempts} {
+		svc := testServices()["api"]
+		svc.Retries.Attempts = attempts
+
+		if err := validateServices(schema.Services{"api": svc}); err != nil {
+			t.Fatalf("attempts=%d: unexpected error: %v", attempts, err)
+		}
+	}
+}

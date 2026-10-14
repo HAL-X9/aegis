@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
 	"github.com/HAL-X9/aegis/internal/controlplane/compile"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
+	"github.com/HAL-X9/aegis/internal/httpmethod"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
@@ -164,7 +164,7 @@ func TestExecutor(t *testing.T) {
 				Service: 0,
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/api",
-					Methods:    methodmask.MethodAll,
+					Methods:    httpmethod.All,
 				},
 			},
 		))
@@ -194,7 +194,7 @@ func TestExecutor(t *testing.T) {
 				Service: 0,
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/api",
-					Methods:    methodmask.MethodAll,
+					Methods:    httpmethod.All,
 				},
 			},
 		))
@@ -218,7 +218,7 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 405 when route matches path but not method", func(t *testing.T) {
-		getMask, ok := methodmask.MethodBit(http.MethodGet)
+		getMask, ok := httpmethod.Bit(http.MethodGet)
 		if !ok {
 			t.Fatal("failed to get method bit for GET")
 		}
@@ -259,7 +259,7 @@ func TestExecutor(t *testing.T) {
 				Service: 0,
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/api",
-					Methods:    methodmask.MethodAll,
+					Methods:    httpmethod.All,
 					Headers: []snapshot.HeaderPredicate{
 						{
 							Name:          "X-Tenant",
@@ -296,7 +296,7 @@ func TestExecutor(t *testing.T) {
 				Service: 0,
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/api",
-					Methods:    methodmask.MethodAll,
+					Methods:    httpmethod.All,
 				},
 			},
 		))
@@ -326,7 +326,7 @@ func TestExecutor(t *testing.T) {
 				Service: 0,
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/api/profile",
-					Methods:    methodmask.MethodAll,
+					Methods:    httpmethod.All,
 				},
 			},
 		))
@@ -377,7 +377,7 @@ func TestExecutor(t *testing.T) {
 				Service: 1,
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/api",
-					Methods:    methodmask.MethodAll,
+					Methods:    httpmethod.All,
 					Headers: []snapshot.HeaderPredicate{
 						{
 							Name:          "X-Tenant",
@@ -391,7 +391,7 @@ func TestExecutor(t *testing.T) {
 				Service: 2,
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/api",
-					Methods:    methodmask.MethodAll,
+					Methods:    httpmethod.All,
 				},
 			},
 		))
@@ -470,7 +470,7 @@ func TestExecutor(t *testing.T) {
 				Service: 0,
 				Match: snapshot.CompiledMatch{
 					PathPrefix: "/api",
-					Methods:    methodmask.MethodAll,
+					Methods:    httpmethod.All,
 				},
 			},
 		))
@@ -515,12 +515,12 @@ func TestExecutorRoutesAndForwardsCanonicalPath(t *testing.T) {
 		snapshot.CompiledRoute{
 			Name:    "public",
 			Service: 0,
-			Match:   snapshot.CompiledMatch{PathPrefix: "/public", Methods: methodmask.MethodAll},
+			Match:   snapshot.CompiledMatch{PathPrefix: "/public", Methods: httpmethod.All},
 		},
 		snapshot.CompiledRoute{
 			Name:    "admin",
 			Service: 2,
-			Match:   snapshot.CompiledMatch{PathPrefix: "/admin", Methods: methodmask.MethodAll},
+			Match:   snapshot.CompiledMatch{PathPrefix: "/admin", Methods: httpmethod.All},
 		},
 	))
 
@@ -604,7 +604,7 @@ func TestExecutorMapsUpstreamFailures(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := buildTestEngine(t, testConfig(snapshot.CompiledRoute{
 				Name:     "api",
-				Match:    snapshot.CompiledMatch{PathPrefix: "/api", Methods: methodmask.MethodAll},
+				Match:    snapshot.CompiledMatch{PathPrefix: "/api", Methods: httpmethod.All},
 				Policies: snapshot.CompiledRoutePolicies{RateLimitID: -1, Timeout: tt.timeout},
 			}))
 			exec := newTestExecutor(t, engine, tt.roundTrip)

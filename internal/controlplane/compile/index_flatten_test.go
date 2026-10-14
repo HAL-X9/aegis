@@ -1,4 +1,4 @@
-package router
+package compile
 
 import (
 	"slices"
@@ -8,14 +8,10 @@ import (
 )
 
 func TestFlattenAndLookup(t *testing.T) {
-	t.Run("nil trie flattens to empty non-nil FlatTrie", func(t *testing.T) {
-		flat, err := Flatten(nil)
+	t.Run("nil trie flattens to empty RouteIndex", func(t *testing.T) {
+		flat, err := flatten(&radixTrie{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if flat == nil {
-			t.Fatal("expected non-nil FlatTrie")
 		}
 
 		var got []snapshot.RouteID
@@ -30,14 +26,14 @@ func TestFlattenAndLookup(t *testing.T) {
 	})
 
 	t.Run("static routes resolve to correct route IDs", func(t *testing.T) {
-		trie := &RadixTrie{}
-		trie.Insert("/a", snapshot.RouteID(1))
-		trie.Insert("/ab", snapshot.RouteID(2))
-		trie.Insert("/abc", snapshot.RouteID(3))
+		trie := &radixTrie{}
+		trie.insert("/a", snapshot.RouteID(1))
+		trie.insert("/ab", snapshot.RouteID(2))
+		trie.insert("/abc", snapshot.RouteID(3))
 
-		flat, err := Flatten(trie)
+		flat, err := flatten(trie)
 		if err != nil {
-			t.Fatalf("Flatten failed: %v", err)
+			t.Fatalf("flatten failed: %v", err)
 		}
 
 		tests := []struct {
@@ -66,13 +62,13 @@ func TestFlattenAndLookup(t *testing.T) {
 	})
 
 	t.Run("static route has priority over param route", func(t *testing.T) {
-		trie := &RadixTrie{}
-		trie.Insert("/users/:id", snapshot.RouteID(1))
-		trie.Insert("/users/static", snapshot.RouteID(2))
+		trie := &radixTrie{}
+		trie.insert("/users/:id", snapshot.RouteID(1))
+		trie.insert("/users/static", snapshot.RouteID(2))
 
-		flat, err := Flatten(trie)
+		flat, err := flatten(trie)
 		if err != nil {
-			t.Fatalf("Flatten failed: %v", err)
+			t.Fatalf("flatten failed: %v", err)
 		}
 
 		got := flatLookupIDs(flat, "/users/static")
@@ -82,12 +78,12 @@ func TestFlattenAndLookup(t *testing.T) {
 	})
 
 	t.Run("param route matches dynamic segment", func(t *testing.T) {
-		trie := &RadixTrie{}
-		trie.Insert("/users/:id", snapshot.RouteID(1))
+		trie := &radixTrie{}
+		trie.insert("/users/:id", snapshot.RouteID(1))
 
-		flat, err := Flatten(trie)
+		flat, err := flatten(trie)
 		if err != nil {
-			t.Fatalf("Flatten failed: %v", err)
+			t.Fatalf("flatten failed: %v", err)
 		}
 
 		got := flatLookupIDs(flat, "/users/42")
@@ -97,12 +93,12 @@ func TestFlattenAndLookup(t *testing.T) {
 	})
 
 	t.Run("wildcard route matches remaining path", func(t *testing.T) {
-		trie := &RadixTrie{}
-		trie.Insert("/assets/*path", snapshot.RouteID(3))
+		trie := &radixTrie{}
+		trie.insert("/assets/*path", snapshot.RouteID(3))
 
-		flat, err := Flatten(trie)
+		flat, err := flatten(trie)
 		if err != nil {
-			t.Fatalf("Flatten failed: %v", err)
+			t.Fatalf("flatten failed: %v", err)
 		}
 
 		got := flatLookupIDs(flat, "/assets/img/logo.png")
@@ -112,14 +108,14 @@ func TestFlattenAndLookup(t *testing.T) {
 	})
 
 	t.Run("static route wins over param and wildcard", func(t *testing.T) {
-		trie := &RadixTrie{}
-		trie.Insert("/users/:id", snapshot.RouteID(1))
-		trie.Insert("/users/static", snapshot.RouteID(2))
-		trie.Insert("/users/*path", snapshot.RouteID(3))
+		trie := &radixTrie{}
+		trie.insert("/users/:id", snapshot.RouteID(1))
+		trie.insert("/users/static", snapshot.RouteID(2))
+		trie.insert("/users/*path", snapshot.RouteID(3))
 
-		flat, err := Flatten(trie)
+		flat, err := flatten(trie)
 		if err != nil {
-			t.Fatalf("Flatten failed: %v", err)
+			t.Fatalf("flatten failed: %v", err)
 		}
 
 		tests := []struct {
@@ -157,7 +153,7 @@ func TestFlattenAndLookup(t *testing.T) {
 	})
 
 	t.Run("static children are sorted by first byte", func(t *testing.T) {
-		trie := &RadixTrie{}
+		trie := &radixTrie{}
 
 		routes := []struct {
 			segment string
@@ -173,12 +169,12 @@ func TestFlattenAndLookup(t *testing.T) {
 		}
 
 		for _, route := range routes {
-			trie.Insert("/"+route.segment, route.id)
+			trie.insert("/"+route.segment, route.id)
 		}
 
-		flat, err := Flatten(trie)
+		flat, err := flatten(trie)
 		if err != nil {
-			t.Fatalf("Flatten failed: %v", err)
+			t.Fatalf("flatten failed: %v", err)
 		}
 
 		for _, route := range routes {
@@ -196,9 +192,9 @@ func TestFlattenAndLookup(t *testing.T) {
 	})
 }
 
-func TestFlatTrieLookup(t *testing.T) {
+func TestRouteIndexLookup(t *testing.T) {
 	t.Run("nil receiver does nothing", func(t *testing.T) {
-		var trie *FlatTrie
+		var trie *snapshot.RouteIndex
 
 		called := false
 
@@ -213,17 +209,13 @@ func TestFlatTrieLookup(t *testing.T) {
 	})
 
 	t.Run("nil visitor does nothing", func(t *testing.T) {
-		trie := &FlatTrie{
-			nodes: []FlatNode{
-				{},
-			},
-		}
+		trie := snapshot.NewRouteIndex([]snapshot.IndexNode{{}}, "", nil)
 
 		trie.Lookup("/anything", nil)
 	})
 
 	t.Run("empty flat trie does nothing", func(t *testing.T) {
-		trie := &FlatTrie{}
+		trie := snapshot.RouteIndex{}
 
 		called := false
 
@@ -238,12 +230,12 @@ func TestFlatTrieLookup(t *testing.T) {
 	})
 
 	t.Run("unmatched path returns no candidates", func(t *testing.T) {
-		trie := &RadixTrie{}
-		trie.Insert("/api", snapshot.RouteID(1))
+		trie := &radixTrie{}
+		trie.insert("/api", snapshot.RouteID(1))
 
-		flat, err := Flatten(trie)
+		flat, err := flatten(trie)
 		if err != nil {
-			t.Fatalf("Flatten failed: %v", err)
+			t.Fatalf("flatten failed: %v", err)
 		}
 
 		got := flatLookupIDs(flat, "/other")
@@ -254,13 +246,13 @@ func TestFlatTrieLookup(t *testing.T) {
 	})
 
 	t.Run("visit returning true stops lookup", func(t *testing.T) {
-		trie := &RadixTrie{}
-		trie.Insert("/users/:id", snapshot.RouteID(1))
-		trie.Insert("/users/*path", snapshot.RouteID(2))
+		trie := &radixTrie{}
+		trie.insert("/users/:id", snapshot.RouteID(1))
+		trie.insert("/users/*path", snapshot.RouteID(2))
 
-		flat, err := Flatten(trie)
+		flat, err := flatten(trie)
 		if err != nil {
-			t.Fatalf("Flatten failed: %v", err)
+			t.Fatalf("flatten failed: %v", err)
 		}
 
 		calls := 0
@@ -276,7 +268,7 @@ func TestFlatTrieLookup(t *testing.T) {
 	})
 }
 
-func TestFlatTrieLookupSemantics(t *testing.T) {
+func TestRouteIndexLookupSemantics(t *testing.T) {
 	tests := []struct {
 		name   string
 		routes []string
@@ -311,14 +303,14 @@ func TestFlatTrieLookupSemantics(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			trie := &RadixTrie{}
+			trie := &radixTrie{}
 			for i, route := range tt.routes {
-				trie.Insert(route, snapshot.RouteID(i))
+				trie.insert(route, snapshot.RouteID(i))
 			}
 
-			flat, err := Flatten(trie)
+			flat, err := flatten(trie)
 			if err != nil {
-				t.Fatalf("Flatten failed: %v", err)
+				t.Fatalf("flatten failed: %v", err)
 			}
 
 			got := flatLookupIDs(flat, tt.path)
@@ -330,12 +322,12 @@ func TestFlatTrieLookupSemantics(t *testing.T) {
 }
 
 func flatLookupIDs(
-	trie *FlatTrie,
+	idx snapshot.RouteIndex,
 	path string,
 ) []snapshot.RouteID {
 	var got []snapshot.RouteID
 
-	trie.Lookup(path, func(candidates []snapshot.RouteID) bool {
+	idx.Lookup(path, func(candidates []snapshot.RouteID) bool {
 		got = append(got, candidates...)
 		return true
 	})

@@ -8,7 +8,7 @@ import (
 
 	"github.com/HAL-X9/aegis/internal/config"
 	"github.com/HAL-X9/aegis/internal/controlplane/pipeline"
-	"github.com/HAL-X9/aegis/internal/controlplane/schema"
+	"github.com/HAL-X9/aegis/internal/controlplane/validate"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/proxy"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
@@ -34,12 +34,9 @@ type Dependencies struct {
 // proxy executor, and constructs both HTTP servers. It performs no network
 // I/O — the returned *http.Server values aren't listening on anything
 // until something calls ListenAndServe on them (see Lifecycle.Run).
-func Bootstrap(cfg *config.Runtime, manifest *schema.GatewayConfig) (*Dependencies, error) {
+func Bootstrap(cfg *config.Runtime, manifest validate.Validated) (*Dependencies, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("app config is nil")
-	}
-	if manifest == nil {
-		return nil, fmt.Errorf("routes manifest is nil")
 	}
 
 	compiled, err := pipeline.Build(manifest)
@@ -47,7 +44,7 @@ func Bootstrap(cfg *config.Runtime, manifest *schema.GatewayConfig) (*Dependenci
 		return nil, fmt.Errorf("build gateway pipeline: %w", err)
 	}
 
-	engine, err := router.BuildEngine(compiled)
+	engine, err := router.NewEngine(compiled)
 	if err != nil {
 		return nil, fmt.Errorf("build route engine: %w", err)
 	}

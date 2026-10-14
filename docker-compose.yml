@@ -28,7 +28,7 @@ services:
     restart: on-failure
 
   mock-upstream:
-    image: golang:1.26-alpine
+    image: golang:1.27-alpine
     container_name: aegis-mock-upstream
     working_dir: /srv
     command: go run server.go

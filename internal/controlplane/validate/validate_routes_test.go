@@ -13,7 +13,7 @@ func TestValidate(t *testing.T) {
 	t.Run("nil config", func(t *testing.T) {
 		t.Parallel()
 
-		err := Validate(nil)
+		_, err := Validate(nil)
 
 		assertErrorContains(t, err, "gateway configuration is nil")
 	})
@@ -21,7 +21,7 @@ func TestValidate(t *testing.T) {
 	t.Run("nil routes slice", func(t *testing.T) {
 		t.Parallel()
 
-		err := Validate(&schema.GatewayConfig{Routes: nil})
+		_, err := Validate(&schema.GatewayConfig{Routes: nil})
 
 		assertErrorContains(t, err,
 			"gateway config validation failed: routes are invalid",
@@ -32,7 +32,7 @@ func TestValidate(t *testing.T) {
 	t.Run("empty routes slice is valid", func(t *testing.T) {
 		t.Parallel()
 
-		err := Validate(&schema.GatewayConfig{
+		_, err := Validate(&schema.GatewayConfig{
 			Routes: []schema.Route{},
 		})
 		if err != nil {
@@ -52,7 +52,7 @@ func TestValidate(t *testing.T) {
 			},
 		}
 
-		if err := Validate(cfg); err != nil {
+		if _, err := Validate(cfg); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -80,7 +80,7 @@ func TestValidate(t *testing.T) {
 			},
 		}
 
-		if err := Validate(cfg); err != nil {
+		if _, err := Validate(cfg); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -101,7 +101,7 @@ func TestValidate(t *testing.T) {
 			},
 		}
 
-		err := Validate(cfg)
+		_, err := Validate(cfg)
 
 		assertErrorContains(t, err,
 			"gateway config validation failed: routes are invalid",
@@ -209,7 +209,7 @@ func TestValidate_routeFields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := Validate(&schema.GatewayConfig{
+			_, err := Validate(&schema.GatewayConfig{
 				Routes: []schema.Route{tt.route},
 			})
 
@@ -288,7 +288,7 @@ func TestValidateRoute(t *testing.T) {
 func TestValidate_errorWrapping(t *testing.T) {
 	t.Parallel()
 
-	err := Validate(&schema.GatewayConfig{
+	_, err := Validate(&schema.GatewayConfig{
 		Routes: []schema.Route{
 			{
 				Name: "bad",

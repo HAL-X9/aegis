@@ -2,9 +2,11 @@ package integration
 
 import (
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
+	"github.com/HAL-X9/aegis/internal/controlplane/compile"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
@@ -23,7 +25,7 @@ func buildTestEngine(t *testing.T) *router.Engine {
 	cfg := &snapshot.CompiledConfig{
 		Services: snapshot.CompiledServices{
 			Items: []snapshot.CompiledService{
-				{Name: "user-profile", Upstream: "http://127.0.0.1:0"},
+				{Name: "user-profile", Upstream: &url.URL{Scheme: "http", Host: "127.0.0.1:0"}},
 			},
 		},
 		Routes: []snapshot.CompiledRoute{
@@ -41,9 +43,15 @@ func buildTestEngine(t *testing.T) *router.Engine {
 		},
 	}
 
-	engine, err := router.BuildEngine(cfg)
+	index, err := compile.Index(cfg.Routes)
 	if err != nil {
-		t.Fatalf("BuildEngine: %v", err)
+		t.Fatalf("compile.Index: %v", err)
+	}
+	cfg.Index = index
+
+	engine, err := router.NewEngine(cfg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
 	}
 	return engine
 }

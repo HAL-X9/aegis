@@ -20,4 +20,8 @@ type CompiledConfig struct {
 	// The registry is immutable after publication and is shared by the
 	// routing engine for the lifetime of this compiled configuration.
 	HeaderNames HeaderRegistry
+
+	// Index is the flattened path index over Routes, built by the control
+	// plane. Route IDs in it are indices into Routes.
+	Index RouteIndex
 }

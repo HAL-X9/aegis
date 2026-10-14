@@ -5,7 +5,7 @@ import (
 
 	"github.com/HAL-X9/aegis/internal/controlplane/compile"
 	"github.com/HAL-X9/aegis/internal/controlplane/normalize"
-	"github.com/HAL-X9/aegis/internal/controlplane/schema"
+	"github.com/HAL-X9/aegis/internal/controlplane/validate"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
@@ -13,7 +13,8 @@ import (
 //
 // The build process includes route and policy compilation.
 // The input configuration is not mutated.
-func Build(config *schema.GatewayConfig) (*snapshot.CompiledConfig, error) {
+func Build(validated validate.Validated) (*snapshot.CompiledConfig, error) {
+	config := validated.Config()
 	if config == nil {
 		return nil, fmt.Errorf("build compiled configuration: gateway config is nil")
 	}
@@ -49,6 +50,11 @@ func Build(config *schema.GatewayConfig) (*snapshot.CompiledConfig, error) {
 
 	compile.ApplyServicePolicies(routes, services)
 
+	index, err := compile.Index(routes)
+	if err != nil {
+		return nil, fmt.Errorf("build compiled configuration: route index failed: %w", err)
+	}
+
 	policies, err := compile.Policies(normalizedPolicies)
 	if err != nil {
 		return nil, fmt.Errorf("build compiled configuration: policy build failed: %w", err)
@@ -59,5 +65,6 @@ func Build(config *schema.GatewayConfig) (*snapshot.CompiledConfig, error) {
 		Routes:      routes,
 		Policies:    *policies,
 		HeaderNames: headerIDs.Registry(),
+		Index:       index,
 	}, nil
 }

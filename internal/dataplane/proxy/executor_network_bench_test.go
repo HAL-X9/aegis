@@ -110,7 +110,7 @@ func buildE2EBenchEngine(tb testing.TB, upstreamURL string) *router.Engine {
 			Items: []snapshot.CompiledService{
 				{
 					Name:     "profile",
-					Upstream: upstreamURL,
+					Upstream: testURL(upstreamURL),
 				},
 			},
 		},
@@ -126,9 +126,9 @@ func buildE2EBenchEngine(tb testing.TB, upstreamURL string) *router.Engine {
 		},
 	}
 
-	engine, err := router.BuildEngine(cfg)
+	engine, err := newTestEngine(cfg)
 	if err != nil {
-		tb.Fatalf("BuildEngine: %v", err)
+		tb.Fatalf("newTestEngine: %v", err)
 	}
 
 	return engine

@@ -158,7 +158,7 @@ func buildProxyBenchEngine(tb testing.TB) *router.Engine {
 			Items: []snapshot.CompiledService{
 				{
 					Name:     "profile",
-					Upstream: "http://upstream.internal:8080",
+					Upstream: testURL("http://upstream.internal:8080"),
 				},
 			},
 		},
@@ -174,9 +174,9 @@ func buildProxyBenchEngine(tb testing.TB) *router.Engine {
 		},
 	}
 
-	engine, err := router.BuildEngine(cfg)
+	engine, err := newTestEngine(cfg)
 	if err != nil {
-		tb.Fatalf("BuildEngine: %v", err)
+		tb.Fatalf("newTestEngine: %v", err)
 	}
 
 	return engine
@@ -190,7 +190,7 @@ func buildProxyBenchEngineWithPolicy(tb testing.TB) *router.Engine {
 			Items: []snapshot.CompiledService{
 				{
 					Name:     "profile",
-					Upstream: "http://upstream.internal:8080",
+					Upstream: testURL("http://upstream.internal:8080"),
 				},
 			},
 		},
@@ -242,9 +242,9 @@ func buildProxyBenchEngineWithPolicy(tb testing.TB) *router.Engine {
 		},
 	}
 
-	engine, err := router.BuildEngine(cfg)
+	engine, err := newTestEngine(cfg)
 	if err != nil {
-		tb.Fatalf("BuildEngine: %v", err)
+		tb.Fatalf("newTestEngine: %v", err)
 	}
 
 	return engine
@@ -441,7 +441,7 @@ func buildProxyBenchEngineWithUpstream(
 			Items: []snapshot.CompiledService{
 				{
 					Name:     "profile",
-					Upstream: upstreamURL,
+					Upstream: testURL(upstreamURL),
 				},
 			},
 		},
@@ -457,9 +457,9 @@ func buildProxyBenchEngineWithUpstream(
 		},
 	}
 
-	engine, err := router.BuildEngine(cfg)
+	engine, err := newTestEngine(cfg)
 	if err != nil {
-		tb.Fatalf("BuildEngine: %v", err)
+		tb.Fatalf("newTestEngine: %v", err)
 	}
 
 	return engine

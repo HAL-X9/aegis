@@ -32,11 +32,12 @@ routes:
 			t.Fatalf("failed to write temp config: %v", err)
 		}
 
-		cfg, err := Load(path)
+		validated, err := Load(path)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
+		cfg := validated.Config()
 		if cfg == nil {
 			t.Fatalf("expected config, got nil")
 		}

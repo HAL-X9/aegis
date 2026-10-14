@@ -44,7 +44,7 @@ does NOT match: /api/v1/profiles       (segment boundary, not a text prefix)
 Matching is segment-aware, not a raw string prefix: `/api/v1/profile` does
 **not** match `/api/v1/profiles`. The trie stores every static segment
 together with its terminating `/` and compares whole segments
-(`FlatTrie.matchStatic`), so a route can never swallow a sibling segment
+(`RouteIndex.matchStatic`), so a route can never swallow a sibling segment
 that merely shares a text prefix, nor can `/ab/c` reach a route `/abc`.
 
 A trailing slash is equivalent to its absence (`/api/v1/profile/` matches

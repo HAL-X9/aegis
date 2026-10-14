@@ -1,7 +1,7 @@
 package normalize
 
 import (
-	"net/http"
+	"net/textproto"
 	"slices"
 	"strings"
 
@@ -78,7 +78,7 @@ func normalizeHeaders(headers map[string][]string) map[string][]string {
 	normalized := make(map[string][]string, len(headers))
 
 	for key, values := range headers {
-		canonicalKey := http.CanonicalHeaderKey(key)
+		canonicalKey := textproto.CanonicalMIMEHeaderKey(key)
 
 		normalizedValues := make([]string, 0, len(values))
 

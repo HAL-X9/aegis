@@ -152,7 +152,7 @@ func buildBenchEngine(
 
 		services = append(services, snapshot.CompiledService{
 			Name:     "svc-" + id,
-			Upstream: "http://upstream-" + id + ".internal:8080",
+			Upstream: testURL("http://upstream-" + id + ".internal:8080"),
 		})
 
 		routes = append(routes, snapshot.CompiledRoute{
@@ -166,14 +166,14 @@ func buildBenchEngine(
 		})
 	}
 
-	engine, err := BuildEngine(&snapshot.CompiledConfig{
+	engine, err := buildEngine(&snapshot.CompiledConfig{
 		Services: snapshot.CompiledServices{
 			Items: services,
 		},
 		Routes: routes,
 	})
 	if err != nil {
-		tb.Fatalf("BuildEngine: %v", err)
+		tb.Fatalf("buildEngine: %v", err)
 	}
 
 	target := strconv.Itoa(size / 2)
@@ -224,7 +224,7 @@ func buildDeepBenchEngine(tb testing.TB, size int) (*Engine, string) {
 
 		services = append(services, snapshot.CompiledService{
 			Name:     "deep-svc-" + id,
-			Upstream: "http://deep-upstream-" + id + ".internal:8080",
+			Upstream: testURL("http://deep-upstream-" + id + ".internal:8080"),
 		})
 
 		routes = append(routes, snapshot.CompiledRoute{
@@ -237,14 +237,14 @@ func buildDeepBenchEngine(tb testing.TB, size int) (*Engine, string) {
 		})
 	}
 
-	engine, err := BuildEngine(&snapshot.CompiledConfig{
+	engine, err := buildEngine(&snapshot.CompiledConfig{
 		Services: snapshot.CompiledServices{
 			Items: services,
 		},
 		Routes: routes,
 	})
 	if err != nil {
-		tb.Fatalf("BuildEngine: %v", err)
+		tb.Fatalf("buildEngine: %v", err)
 	}
 
 	n := size - 1
@@ -296,7 +296,7 @@ func BenchmarkLookupHighFanout(b *testing.B) {
 			headerNone,
 		)
 
-		nodes, maxChildren, avgChildren := flatTrieStats(engine.trie)
+		nodes, maxChildren, avgChildren := indexStats(&engine.index)
 
 		b.Logf(
 			"routes=%d nodes=%d maxChildren=%d avgChildren=%.2f",
@@ -338,7 +338,7 @@ func BenchmarkLookupDeep(b *testing.B) {
 	} {
 		engine, path := buildDeepBenchEngine(b, size)
 
-		nodes, maxChildren, avgChildren := flatTrieStats(engine.trie)
+		nodes, maxChildren, avgChildren := indexStats(&engine.index)
 
 		b.Logf(
 			"routes=%d nodes=%d maxChildren=%d avgChildren=%.2f",
@@ -387,7 +387,7 @@ func buildMixedBenchEngine(
 
 		services = append(services, snapshot.CompiledService{
 			Name:     name,
-			Upstream: "http://upstream-" + name + ".internal:8080",
+			Upstream: testURL("http://upstream-" + name + ".internal:8080"),
 		})
 
 		routes = append(routes, snapshot.CompiledRoute{
@@ -424,14 +424,14 @@ func buildMixedBenchEngine(
 		)
 	}
 
-	engine, err := BuildEngine(&snapshot.CompiledConfig{
+	engine, err := buildEngine(&snapshot.CompiledConfig{
 		Services: snapshot.CompiledServices{
 			Items: services,
 		},
 		Routes: routes,
 	})
 	if err != nil {
-		tb.Fatalf("BuildEngine: %v", err)
+		tb.Fatalf("buildEngine: %v", err)
 	}
 
 	for _, path := range lookupPaths {
@@ -453,7 +453,7 @@ func BenchmarkLookupMixed(b *testing.B) {
 	} {
 		engine, paths := buildMixedBenchEngine(b, groups)
 
-		nodes, maxChildren, avgChildren := flatTrieStats(engine.trie)
+		nodes, maxChildren, avgChildren := indexStats(&engine.index)
 
 		b.Logf(
 			"groups=%d routes=%d nodes=%d maxChildren=%d avgChildren=%.2f",
@@ -484,28 +484,30 @@ func BenchmarkLookupMixed(b *testing.B) {
 	}
 }
 
-// flatTrieStats walks the flattened, pointer-free arena starting at the
-// root (node index 0) and reports the same shape statistics the old
-// RadixNode-walking trieStats did, but over FlatNode.FirstChild/ChildCount
-// ranges instead of a []*RadixNode slice. Only static children are counted,
-// matching the original's behavior (param/wildcard edges were not
-// included in its child count either).
-func flatTrieStats(t *FlatTrie) (
+// indexStats walks the flattened, pointer-free arena starting at the root
+// (node index 0) and reports shape statistics over IndexNode.FirstChild and
+// ChildCount ranges. Only static children are counted; param and wildcard
+// edges are not included in the child count.
+func indexStats(t *snapshot.RouteIndex) (
 	nodes int,
 	maxChildren int,
 	avgChildren float64,
 ) {
-	if t == nil || len(t.nodes) == 0 {
+	if t == nil {
+		return 0, 0, 0
+	}
+	nodesArena := t.Nodes()
+	if len(nodesArena) == 0 {
 		return 0, 0, 0
 	}
 
 	totalChildren := 0
 
-	var walk func(NodeID)
-	walk = func(nodeID NodeID) {
+	var walk func(snapshot.IndexNodeID)
+	walk = func(nodeID snapshot.IndexNodeID) {
 		nodes++
 
-		node := &t.nodes[nodeID]
+		node := &nodesArena[nodeID]
 		children := int(node.ChildCount)
 		totalChildren += children
 
@@ -514,12 +516,12 @@ func flatTrieStats(t *FlatTrie) (
 		}
 
 		for i := uint16(0); i < node.ChildCount; i++ {
-			childID := node.FirstChild + NodeID(i)
+			childID := node.FirstChild + snapshot.IndexNodeID(i)
 			walk(childID)
 		}
 	}
 
-	walk(NodeID(0))
+	walk(snapshot.IndexNodeID(0))
 
 	avgChildren = float64(totalChildren) / float64(nodes)
 

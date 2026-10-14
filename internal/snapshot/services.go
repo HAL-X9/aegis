@@ -1,6 +1,9 @@
 package snapshot
 
-import "time"
+import (
+	"net/url"
+	"time"
+)
 
 // ServiceID is a stable index into the compiled service table.
 type ServiceID uint32
@@ -18,8 +21,8 @@ type CompiledService struct {
 	// Name is the stable service identifier used for diagnostics and observability.
 	Name string
 
-	// Upstream is the precomputed upstream origin URL.
-	Upstream string
+	// Upstream is the parsed upstream origin, scheme and host only.
+	Upstream *url.URL
 
 	// Timeout bounds the whole upstream exchange, including retries and the
 	// response body; zero means none.

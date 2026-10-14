@@ -1,4 +1,4 @@
-package router
+package compile
 
 import (
 	"testing"
@@ -6,20 +6,14 @@ import (
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
-func TestBuildRadixTrie(t *testing.T) {
+func TestIndex(t *testing.T) {
 	t.Run("builds empty trie for empty input", func(t *testing.T) {
-		trie := BuildRadixTrie(nil)
-
-		if trie == nil {
-			t.Fatal("expected non-nil trie")
-		}
-
-		flat, err := Flatten(trie)
+		idx, err := Index(nil)
 		if err != nil {
-			t.Fatalf("Flatten failed: %v", err)
+			t.Fatalf("Index failed: %v", err)
 		}
 
-		if got := flatLookupIDs(flat, "/anything"); got != nil {
+		if got := flatLookupIDs(idx, "/anything"); got != nil {
 			t.Fatalf("lookup on empty trie = %#v", got)
 		}
 	})
@@ -30,15 +24,13 @@ func TestBuildRadixTrie(t *testing.T) {
 			{Name: "r2", Match: snapshot.CompiledMatch{PathPrefix: "/b"}},
 		}
 
-		trie := BuildRadixTrie(routes)
-
-		flat, err := Flatten(trie)
+		idx, err := Index(routes)
 		if err != nil {
-			t.Fatalf("Flatten failed: %v", err)
+			t.Fatalf("Index failed: %v", err)
 		}
 
-		gotA := flatLookupIDs(flat, "/a")
-		gotB := flatLookupIDs(flat, "/b")
+		gotA := flatLookupIDs(idx, "/a")
+		gotB := flatLookupIDs(idx, "/b")
 
 		if len(gotA) != 1 || gotA[0] != 0 {
 			t.Fatalf("lookup /a = %#v, want [0]", gotA)

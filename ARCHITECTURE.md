@@ -64,7 +64,7 @@ sequenceDiagram
     participant M as Middleware
     participant X as proxy.Executor
     participant V as View
-    participant R as FlatTrie / Router
+    participant R as RouteIndex / Router
     participant P as Policies
     participant T as http.Transport
     participant U as Upstream
@@ -127,8 +127,8 @@ sequenceDiagram
 | `internal/app`                  | Process wiring: dependency container, lifecycle, graceful shutdown                     |
 | `internal/config`               | Runtime config loading and resolution (flags/env)                                      |
 | `internal/contracts/methodmask` | Shared HTTP-method bitmask contract used by compiler and router                        |
-| `internal/controlplane`         | Load → normalize → compile → validate → snapshot pipeline for routes/policies/services |
-| `internal/dataplane/router`     | Radix trie route index: build, insert, lookup, header matching                         |
+| `internal/controlplane`         | Load → normalize → compile → validate → snapshot pipeline, including the route index   |
+| `internal/dataplane/router`     | `Engine` façade over the compiled snapshot, header matching                            |
 | `internal/dataplane/policy`     | Header mutation execution (request/response)                                           |
 | `internal/dataplane/proxy`      | `Executor` — the terminal handler that performs the actual upstream call               |
 | `internal/dataplane/request`    | Request normalization, hop-by-hop header stripping, forwarded-header handling          |

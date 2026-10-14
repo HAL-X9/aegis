@@ -1,15 +1,39 @@
 package router
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/HAL-X9/aegis/internal/controlplane/compile"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
-func TestBuildEngine(t *testing.T) {
+// buildEngine indexes cfg's routes the way the control plane does, then
+// wraps the snapshot in an Engine.
+func buildEngine(cfg *snapshot.CompiledConfig) (*Engine, error) {
+	index, err := compile.Index(cfg.Routes)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Index = index
+
+	return NewEngine(cfg)
+}
+
+// testURL parses a literal upstream origin. A malformed literal is a bug in
+// the test itself, so it panics rather than returning an error.
+func testURL(raw string) *url.URL {
+	u, err := url.Parse(raw)
+	if err != nil {
+		panic(err)
+	}
+	return u
+}
+
+func TestNewEngine(t *testing.T) {
 	t.Run("returns error for nil config", func(t *testing.T) {
-		_, err := BuildEngine(nil)
+		_, err := NewEngine(nil)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -18,76 +42,13 @@ func TestBuildEngine(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
-
-	t.Run("returns error for invalid upstream", func(t *testing.T) {
-		cfg := &snapshot.CompiledConfig{
-			Services: snapshot.CompiledServices{
-				Items: []snapshot.CompiledService{
-					{
-						Name:     "api",
-						Upstream: "://invalid-url",
-					},
-				},
-			},
-			Routes: []snapshot.CompiledRoute{
-				{
-					Name:    "api",
-					Service: snapshot.ServiceID(0),
-					Match: snapshot.CompiledMatch{
-						PathPrefix: "/api",
-					},
-				},
-			},
-		}
-
-		_, err := BuildEngine(cfg)
-		if err == nil {
-			t.Fatal("expected error")
-		}
-
-		if !strings.Contains(err.Error(), "invalid upstream") {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("returns error for invalid service reference", func(t *testing.T) {
-		cfg := &snapshot.CompiledConfig{
-			Services: snapshot.CompiledServices{
-				Items: []snapshot.CompiledService{
-					{
-						Name:     "api",
-						Upstream: "http://localhost:8080",
-					},
-				},
-			},
-			Routes: []snapshot.CompiledRoute{
-				{
-					Name:    "api",
-					Service: snapshot.ServiceID(1),
-					Match: snapshot.CompiledMatch{
-						PathPrefix: "/api",
-					},
-				},
-			},
-		}
-
-		_, err := BuildEngine(cfg)
-		if err == nil {
-			t.Fatal("expected error")
-		}
-
-		if !strings.Contains(err.Error(), "references invalid service ID") {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
 	t.Run("builds engine and resolves route", func(t *testing.T) {
 		cfg := &snapshot.CompiledConfig{
 			Services: snapshot.CompiledServices{
 				Items: []snapshot.CompiledService{
 					{
 						Name:     "api",
-						Upstream: "http://localhost:8080",
+						Upstream: testURL("http://localhost:8080"),
 					},
 				},
 			},
@@ -102,7 +63,7 @@ func TestBuildEngine(t *testing.T) {
 			},
 		}
 
-		engine, err := BuildEngine(cfg)
+		engine, err := buildEngine(cfg)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -167,12 +128,12 @@ func TestEngineLookup(t *testing.T) {
 	})
 
 	t.Run("empty path does nothing", func(t *testing.T) {
-		engine, err := BuildEngine(&snapshot.CompiledConfig{
+		engine, err := buildEngine(&snapshot.CompiledConfig{
 			Services: snapshot.CompiledServices{
 				Items: []snapshot.CompiledService{
 					{
 						Name:     "x",
-						Upstream: "http://h:1",
+						Upstream: testURL("http://h:1"),
 					},
 				},
 			},
@@ -203,12 +164,12 @@ func TestEngineLookup(t *testing.T) {
 	})
 
 	t.Run("unmatched path does not produce candidates", func(t *testing.T) {
-		engine, err := BuildEngine(&snapshot.CompiledConfig{
+		engine, err := buildEngine(&snapshot.CompiledConfig{
 			Services: snapshot.CompiledServices{
 				Items: []snapshot.CompiledService{
 					{
 						Name:     "api",
-						Upstream: "http://localhost:8080",
+						Upstream: testURL("http://localhost:8080"),
 					},
 				},
 			},

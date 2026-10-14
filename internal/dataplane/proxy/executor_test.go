@@ -5,11 +5,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/HAL-X9/aegis/internal/contracts/methodmask"
+	"github.com/HAL-X9/aegis/internal/controlplane/compile"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
 	"github.com/HAL-X9/aegis/internal/snapshot"
@@ -24,12 +26,34 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 func buildTestEngine(t *testing.T, cfg *snapshot.CompiledConfig) *router.Engine {
 	t.Helper()
 
-	engine, err := router.BuildEngine(cfg)
+	engine, err := newTestEngine(cfg)
 	if err != nil {
-		t.Fatalf("BuildEngine failed: %v", err)
+		t.Fatalf("newTestEngine failed: %v", err)
 	}
 
 	return engine
+}
+
+// newTestEngine indexes cfg's routes the way the control plane does, then
+// wraps the snapshot in an Engine.
+func newTestEngine(cfg *snapshot.CompiledConfig) (*router.Engine, error) {
+	index, err := compile.Index(cfg.Routes)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Index = index
+
+	return router.NewEngine(cfg)
+}
+
+// testURL parses a literal upstream origin. A malformed literal is a bug in
+// the test itself, so it panics rather than returning an error.
+func testURL(raw string) *url.URL {
+	u, err := url.Parse(raw)
+	if err != nil {
+		panic(err)
+	}
+	return u
 }
 
 // noRateLimits returns a RateLimiterSet with no configured policies, so
@@ -45,15 +69,15 @@ func testConfig(routes ...snapshot.CompiledRoute) *snapshot.CompiledConfig {
 			Items: []snapshot.CompiledService{
 				{
 					Name:     "upstream",
-					Upstream: "http://upstream:8080",
+					Upstream: testURL("http://upstream:8080"),
 				},
 				{
 					Name:     "ignored",
-					Upstream: "http://ignored:8080",
+					Upstream: testURL("http://ignored:8080"),
 				},
 				{
 					Name:     "fallback",
-					Upstream: "http://upstream:9090",
+					Upstream: testURL("http://upstream:9090"),
 				},
 			},
 		},

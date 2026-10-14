@@ -46,14 +46,12 @@ func Services(services ir.Services) (snapshot.CompiledServices, map[string]snaps
 	}, serviceIDs, nil
 }
 
-func upstreamOriginURL(upstream ir.Upstream) string {
-	u := &url.URL{
+func upstreamOriginURL(upstream ir.Upstream) *url.URL {
+	return &url.URL{
 		Scheme: upstream.Scheme,
 		Host: net.JoinHostPort(
 			upstream.Host,
 			strconv.Itoa(upstream.Port),
 		),
 	}
-
-	return u.String()
 }

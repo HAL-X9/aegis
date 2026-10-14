@@ -76,6 +76,8 @@ Unit tests reside alongside the code they verify and may reference unexported id
 | `internal/dataplane/proxy` | 4 | 8 | `Executor`: routing and canonical paths, status codes on upstream failure, and network cost (Section 7) |
 | `internal/dataplane/retry` | 5 | — | retries: idempotency, request body, attempt timeout, and cancellation of the request context |
 | `internal/dataplane/request` | 6 | 1 | canonicalization of paths, construction of upstream headers and `X-Forwarded-*` |
+| `internal/config` | 5 | — | loading on top of `DefaultRuntime`: a minimal document yields the defaults, explicit values (including a zero) override them, the `middleware` switches, rejection of an unknown key, and the required listen addresses |
+| `internal/edge/public` | 2 | — | composition of the public middleware chain for each combination of the `middleware` switches |
 | `internal/dataplane/middleware` | 5 | 1 | `X-Request-Id`: acceptance of a valid value, replacement of an invalid one, and absence of allocations |
 | `internal/httpmethod` | 2 | — | parsing of methods and bitmasks |
 
@@ -250,7 +252,7 @@ The aggregate coverage across `internal/...` is approximately 85 %. This figure 
 The following areas are insufficiently tested to support confident modification. They are listed in order of decreasing risk.
 
 1. **`internal/dataplane/routelabel` and the metrics integration.** The package `routelabel` is invoked from `Executor`, but no context carrying a recorder is ever created (`routelabel.NewContext` has no caller), and the metrics layer does not read the value. Route-based labeling is therefore not operational. No test detects this, because the end-to-end tests do not inspect metric labels. A test that reads `/metrics` and asserts the route label would expose the defect.
-2. **`internal/config` has no tests of its own.** The rules of `Validate`, `ResolvePath`, and `BuildTLSConfig` are verified only indirectly. A table-driven test for each rule in [runtime-configuration.md](runtime-configuration.md), Section 7, is recommended.
+2. **`internal/config` has tests only for loading, defaults and the `middleware` section.** The rules of `Validate`, `ResolvePath`, and `BuildTLSConfig` are verified only indirectly. A table-driven test for each rule in [runtime-configuration.md](runtime-configuration.md), Section 7, is recommended.
 3. **`internal/app`, lifecycle.** Coverage is 28 %. The shutdown sequence, the propagation of a listener failure to the whole process, and the transition of `/readyz` to the not-ready state during shutdown are not tested. A test of `Lifecycle.Run` that cancels the context and verifies termination of both listeners is recommended.
 4. **`internal/observe/health` and `/readyz`.** Only `/livez` is tested (Section 6). The readiness state during shutdown is verified only manually.
 5. **TLS.** No test starts an HTTPS listener. Certificate loading is verified only during manual checks.

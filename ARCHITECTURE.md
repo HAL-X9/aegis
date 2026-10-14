@@ -46,7 +46,7 @@ flowchart TB
 ## Request lifecycle
 
 1. `edge/public` accepts the connection and forwards to the data plane's compiled `http.Handler`.
-2. The middleware chain runs outermost first: **timeout**, **metrics**, and **request ID**, which keeps a well-formed client `X-Request-ID` or generates a UUIDv7 and echoes it in the response. The route handler forwards the request to the executor. Panic recovery is not yet part of the chain (see Roadmap).
+2. The middleware chain runs outermost first: **timeout**, **metrics**, and **request ID** (metrics and request ID can each be switched off with the `middleware` section of the runtime config; both are on by default). Request ID keeps a well-formed client `X-Request-ID` or generates a UUIDv7 and echoes it in the response. The route handler forwards the request to the executor. Panic recovery is not yet part of the chain (see Roadmap).
 3. `proxy.Executor` looks up the request path in the route index (`router.Engine.Lookup` over `snapshot.RouteIndex`), producing all route candidates that share that path.
 4. Candidates are filtered by HTTP method using a precomputed bitmask (`internal/httpmethod`) and by header predicates (`router.HeadersMatch`). The first candidate satisfying both wins.
 5. `policy.ExecuteMutations` applies configured header mutations to the outbound request, then hop-by-hop headers are stripped (`request.RemoveHopHeaders`).
@@ -113,7 +113,7 @@ sequenceDiagram
 
 **Control/data plane separation.** Configuration compiles once into a `snapshot` package the data plane only reads. This means adding a route, a policy, or a service doesn't change data-plane code paths — it changes what the compiler produces, keeping the request-serving code free of configuration-shaped conditionals.
 
-**Middleware as `func(http.Handler) http.Handler`.** Standard, composable Go idiom. The public server composes the chain in `internal/edge/public/server.go`; the innermost handler forwards each request to the executor.
+**Middleware as `func(http.Handler) http.Handler`.** Standard, composable Go idiom. The public server composes the chain in `internal/edge/public/server.go`, installing the optional layers according to `config.Runtime.Middleware`; the innermost handler forwards each request to the executor.
 
 **Request ID: accepted when well-formed, otherwise a UUIDv7.** A client-supplied `X-Request-ID` is kept only when it is a single value of 1–128 visible ASCII characters, so a caller's ID can be followed end to end while spaces and control characters — the log-injection vector — never get through. Anything else is replaced with a UUIDv7, which is time-ordered and sorts naturally in logs, unlike UUIDv4. The ID is written into the request headers, which is how it reaches the upstream and later handlers without a `context.Context` allocation, and is echoed in the response.
 

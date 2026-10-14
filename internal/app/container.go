@@ -63,7 +63,14 @@ func Bootstrap(cfg *config.Runtime, manifest validate.Validated) (*Dependencies,
 		Limiters: rateLimiters,
 	})
 
-	metricsCollector := metrics.NewMetrics(prometheus.DefaultRegisterer)
+	// The HTTP metrics collector exists only when its middleware is enabled,
+	// so a disabled gateway registers no aegis_http_* series. The system
+	// listener's /metrics endpoint is independent of this switch.
+	var metricsCollector *metrics.Metrics
+	if cfg.Middleware.Metrics {
+		metricsCollector = metrics.NewMetrics(prometheus.DefaultRegisterer)
+	}
+
 	healthSvc := health.NewHealth()
 
 	systemHTTP, err := edgeadmin.NewSystemServer(cfg, healthSvc, promhttp.Handler())

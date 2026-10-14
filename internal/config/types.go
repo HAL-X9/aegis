@@ -58,6 +58,15 @@ type Tracing struct {
 	Endpoint string `yaml:"endpoint"`
 }
 
+// Middleware toggles optional layers of the public listener's request chain.
+// The request timeout is not listed here: it is controlled by
+// listeners.public.timeouts.request_timeout. Every layer is enabled unless
+// the document says otherwise (see DefaultRuntime).
+type Middleware struct {
+	Metrics   bool `yaml:"metrics"`
+	RequestID bool `yaml:"request_id"`
+}
+
 // Listeners separates public client traffic from internal system endpoints.
 type Listeners struct {
 	Public HTTP `yaml:"public"`
@@ -73,5 +82,6 @@ type Runtime struct {
 	Listeners         Listeners         `yaml:"listeners"`
 	UpstreamTransport UpstreamTransport `yaml:"upstream_transport"`
 	Proxy             Proxy             `yaml:"proxy"`
+	Middleware        Middleware        `yaml:"middleware"`
 	Observability     Observability     `yaml:"observability"`
 }

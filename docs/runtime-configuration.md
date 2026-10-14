@@ -77,7 +77,17 @@ Values take effect at one of two points:
 
 ### 2.5 Default values
 
-No default values are defined for runtime configuration fields. An omitted field receives the zero value of its Go type, and the rule given for that field in Sections 4 and 5 applies. The requirement that a field be present is not always expressed by validation: for some fields the zero value is permitted and denotes "no limit"; for others it is rejected.
+Defaults are defined in one place, `DefaultRuntime` ([defaults.go](../internal/config/defaults.go)). The loader decodes the document on top of that value, so an omitted field keeps its default, and a field that is present always wins, including an explicit zero: `request_timeout: 0` disables the request deadline instead of falling back to 30 s. Defaults are validated together with the rest of the document.
+
+A field has a default only when a safe, bounded value exists. These fields have none and keep the zero value of their Go type:
+
+- `listeners.*.addr`, which is required;
+- `listeners.*.tls`, whose absence means plain HTTP;
+- `proxy.trusted_proxies`, whose absence trusts no address;
+- `observability.tracing.*`, which is off by default;
+- `upstream_transport.max_conns_per_host`, where 0 means no limit.
+
+The defaults equal the values in [configs/aegis.yaml](../configs/aegis.yaml); they are listed per field in Sections 4 and 5. The requirement that a field be present is not always expressed by validation: for some fields the zero value is permitted and denotes "no limit"; for others it is rejected.
 
 ---
 
@@ -115,6 +125,10 @@ upstream_transport:    # connection parameters for upstream services
 proxy:                 # reserved (Section 6.1)
   trusted_proxies: [ CIDR ]
 
+middleware:            # optional layers of the public listener (Section 4.2)
+  metrics: bool
+  request_id: bool
+
 observability:         # partially reserved (Sections 6.2 and 6.3)
   logging:
     level: enum
@@ -142,25 +156,36 @@ Both listeners share the same schema. Validation is performed by `validateHTTP` 
 |---|---|---|---|---|
 | `addr` | string, `host:port` | not permitted | `net.SplitHostPort` | The address passed to `net.Listen`. An empty host is permitted (`":8080"`) and denotes all interfaces. |
 | `tls` | object | plain HTTP | when present, `cert_file` and `key_file` are required | Enables HTTPS (Section 4.4). |
-| `timeouts.read_timeout` | duration | not permitted | at least 1 ms | Bounds the reading of the entire request, including the body. |
-| `timeouts.read_header_timeout` | duration | 0: `read_timeout` applies (`net/http` behavior) | not greater than `read_timeout` | Bounds the reading of request headers. |
-| `timeouts.write_timeout` | duration | 0: no limit | not negative | Bounds the writing of the response. |
-| `timeouts.idle_timeout` | duration | 0: `read_timeout` applies | not validated | Bounds the wait for the next request on a keep-alive connection. |
-| `timeouts.request_timeout` | duration | 0: disabled | not validated | Deadline for the processing of a request in middleware. Applies to the public listener only (Section 4.2). |
-| `max_header_bytes` | integer | 0: 1 MiB (`net/http` default) | not negative | Maximum size of the request headers. |
+| `timeouts.read_timeout` | duration | `10s` public, `5s` system | at least 1 ms | Bounds the reading of the entire request, including the body. |
+| `timeouts.read_header_timeout` | duration | `5s` public, `2s` system | not greater than `read_timeout` | Bounds the reading of request headers. |
+| `timeouts.write_timeout` | duration | `30s` public, `10s` system | not negative | Bounds the writing of the response. |
+| `timeouts.idle_timeout` | duration | `120s` public, `30s` system | not validated | Bounds the wait for the next request on a keep-alive connection. |
+| `timeouts.request_timeout` | duration | `30s` (public) | not validated | Deadline for the processing of a request in middleware. Applies to the public listener only (Section 4.2). |
+| `max_header_bytes` | integer | 1 MiB public, 256 KiB system | not negative | Maximum size of the request headers. |
 
-The field `read_timeout` is effectively mandatory: a zero value is rejected by validation. The field `read_header_timeout` MUST NOT exceed `read_timeout`. The comparison is performed in one direction only, so the omission of `read_header_timeout` is not an error.
+The field `addr` is the only one without a default. An explicit zero `read_timeout` is rejected by validation. The field `read_header_timeout` MUST NOT exceed `read_timeout`; since both have defaults, overriding `read_timeout` alone to a value below the default `read_header_timeout` is rejected, and the two should be set together. An explicit `0` in the other timeout fields keeps its `net/http` meaning, given in the table as the behavior of a zero value.
 
 ### 4.2 Public listener (`listeners.public`)
 
 The public listener accepts client requests. Each request traverses a middleware chain assembled by `NewPublicServer` ([server.go](../internal/edge/public/server.go)). The layers, from outermost to innermost, are:
 
 1. `timeout`, which applies `request_timeout`;
-2. `metrics`, which records the count and duration of requests;
-3. `request_id`, which ensures the presence of an `X-Request-Id` header;
+2. `metrics`, which records the count and duration of requests (optional);
+3. `request_id`, which ensures the presence of an `X-Request-Id` header (optional);
 4. the routing handler, which passes the request to `proxy.Executor`.
 
-The field `request_timeout` specifies the upper bound on the processing time of a single request, including retries to the upstream. When it expires, the client receives `504 Gateway Timeout`. A value of 0, or a negative value, disables the bound ([timeout.go](../internal/dataplane/middleware/timeout.go)).
+The two optional layers are switched by the top-level section `middleware`:
+
+**Table 2a.** Fields of `middleware`.
+
+| Field | Type | Value when omitted | Effect of `false` |
+|---|---|---|---|
+| `metrics` | bool | `true` | The `metrics` layer is not installed and the HTTP metrics collector is neither created nor registered, so no `aegis_http_*` series exist. The endpoint `GET /metrics` of the system listener (Section 4.3) is not affected. |
+| `request_id` | bool | `true` | The `request_id` layer is not installed: no ID is generated, a client-supplied `X-Request-Id` is forwarded to the upstream unchecked, and the header is not echoed in the response. |
+
+The whole section, or either key, may be omitted; an omitted setting is enabled. The section applies to the public listener only: the system listener has no middleware. The order of the layers is fixed and is not configurable; the timeout is controlled by `request_timeout` and has no switch here. An unknown key under `middleware` is rejected at load time like any other unknown field.
+
+The field `request_timeout` specifies the upper bound on the processing time of a single request, including retries to the upstream. When it expires, the client receives `504 Gateway Timeout`. The default is 30 s. A value of 0, or a negative value, disables the bound ([timeout.go](../internal/dataplane/middleware/timeout.go)).
 
 The service timeout (`timeout` in the routing manifest; see [configuration.md](configuration.md#timeouts-and-retries)) and `request_timeout` apply concurrently: the deadline that expires first determines the outcome. Validation does not relate the two values. If `request_timeout` is shorter than the service timeout, the service timeout is never reached, because the request terminates earlier.
 
@@ -216,7 +241,9 @@ Four parameters are fixed in the implementation and cannot be configured:
 - `KeepAlive` for connection establishment: 30 s;
 - `ForceAttemptHTTP2`: `true`, meaning that HTTP/2 is used when the upstream supports it.
 
-A duration of 0 denotes the absence of a limit in the sense of `net/http`. A configuration without explicit timeouts may therefore wait indefinitely for an upstream. In production environments, at least `dial_timeout` and `response_header_timeout` SHOULD be set.
+The defaults are: `max_idle_conns` 1024, `max_idle_conns_per_host` 1024, `dial_timeout` 3 s, `tls_handshake_timeout` 5 s, `response_header_timeout` 10 s, `idle_conn_timeout` 90 s; `max_conns_per_host` has none (0, no limit). The rule that `max_idle_conns_per_host` MUST be at least 1 applies to an explicit value only, since the field is no longer left at 0 by omission.
+
+An explicit duration of 0 denotes the absence of a limit in the sense of `net/http`, so setting `dial_timeout` or `response_header_timeout` to 0 allows an indefinite wait for an upstream.
 
 Negative durations are not rejected by validation.
 
@@ -234,7 +261,7 @@ The field will become meaningful once a trusted-address chain is implemented. Un
 
 ### 6.2 `observability.logging`
 
-The fields `level` and `format` are validated: `level` MUST be one of `debug`, `info`, `warn`, `error`, `dpanic`, `panic`, or `fatal`; `format` MUST be `json` or `console`. The process, however, writes its log through the standard `log` package with the prefix `aegis:`. Neither value is applied to any component.
+The fields `level` and `format` default to `info` and `json` and are validated: `level` MUST be one of `debug`, `info`, `warn`, `error`, `dpanic`, `panic`, or `fatal`; `format` MUST be `json` or `console`. The process, however, writes its log through the standard `log` package with the prefix `aegis:`. Neither value is applied to any component.
 
 The validation error message refers to the key `logging_config.level`, whereas the key in the schema is `observability.logging.level`. This inconsistency in the message text is to be corrected.
 
@@ -312,6 +339,10 @@ proxy:                                # reserved; Section 6.1
     - 172.16.0.0/12
     - 192.168.0.0/16
 
+middleware:                           # optional layers of the public listener; Section 4.2
+  metrics: true                       # request count and duration; false: no aegis_http_* series
+  request_id: true                    # X-Request-Id: keep a valid client ID or generate one
+
 observability:                        # reserved; Sections 6.2 and 6.3
   logging:
     level: info
@@ -341,6 +372,8 @@ Table 5 records the status of each field. It is intended as a reference for veri
 | `listeners.system.timeouts.request_timeout` | no | no | **ignored** |
 | `listeners.{public,system}.max_header_bytes` | yes | yes | active |
 | `upstream_transport.*` | partially (Section 5) | yes | active |
+| `middleware.metrics` | n/a (boolean) | yes | active; default `true` |
+| `middleware.request_id` | n/a (boolean) | yes | active; default `true` |
 | `proxy.trusted_proxies` | no | no | **reserved** |
 | `observability.logging.level` | yes | no | **reserved** |
 | `observability.logging.format` | yes | no | **reserved** |
@@ -357,7 +390,7 @@ The field `listeners.system.timeouts.request_timeout` exists in the type because
 2. **Incomplete validation.** The sign of duration values, `idle_timeout`, `request_timeout`, `proxy.*`, and `observability.tracing.*` are not validated. The relationship between `request_timeout` and service timeouts is not validated either.
 3. **Part of the schema is not applied** (Section 6). Values are accepted without warning, which may create the false impression that they have an effect.
 4. **No environment-specific overrides.** Each environment uses its own file. Variable substitution within the YAML is not implemented.
-5. **No tests for the `internal/config` package.** The validation rules are verified only indirectly through end-to-end tests (see [testing.md](testing.md)).
+5. **Few tests for the `internal/config` package.** Only the loading, the defaults (`DefaultRuntime`) and the `middleware` section are tested directly; the validation rules are verified indirectly through end-to-end tests (see [testing.md](testing.md)).
 
 ---
 

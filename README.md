@@ -10,16 +10,6 @@ Configuration is treated as a build artifact rather than something interpreted a
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full request lifecycle and the reasoning behind each design decision.
 
-## Lookup performance
-
-| Benchmark                   | Routes | Latency      | Allocations         |
-|-----------------------------|--------|--------------|---------------------|
-| `BenchmarkLookupHighFanout` | 8,192  | 91.07 ns/op  | 0 B/op, 0 allocs/op |
-| `BenchmarkLookupDeep`       | 4,096  | 132.10 ns/op | 0 B/op, 0 allocs/op |
-| `BenchmarkLookupMixed`      | 12,288 | 145.60 ns/op | 0 B/op, 0 allocs/op |
-
-Route lookup stays under 100 ns for high-fanout route sets and in the 130–150 ns range for deep and mixed static/param/wildcard paths, with zero allocations across the tested route counts. The full benchmark suite lives in `internal/dataplane/router`.
-
 ## Quick start
 
 ### Run with Docker
@@ -54,14 +44,6 @@ export AEGIS_ROUTES_CONFIG_PATH=configs/gateway.yaml
 go run ./cmd
 ```
 
-### Verify it's running
-
-```bash
-curl -i http://127.0.0.1:18080/livez
-```
-
-Public traffic is served on `:8080` and routed through the data plane using `configs/gateway.yaml`. The system plane (health, metrics) listens separately on `:18080`, so operational endpoints are never exposed on the same surface as user traffic.
-
 ### Production build
 
 ```bash
@@ -83,4 +65,7 @@ Aegis is pre-1.0 and under active development. Public interfaces and configurati
 ## Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — design decisions, request lifecycle, package layout
+- [docs/configuration.md](docs/configuration.md) — configuration model and validation rules
+- [docs/routing.md](docs/routing.md) — routing engine architecture
+- [docs/routing-and-errors.md](docs/routing-and-errors.md) — route matching semantics and the error-response contract
 - [docs/policies.md](docs/policies.md) — policy engine and header mutations

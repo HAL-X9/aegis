@@ -11,22 +11,24 @@ referenced by routes.
 
 ## Implementation Status (Current Codebase)
 
-Headers policy compilation, conflict validation, and runtime mutation
-application are implemented:
+Headers policy validation, merging, and runtime mutation are implemented:
 
-- `internal/controlplane/compile/routes_compiler.go` merges every
-  headers-policy a route references into a single set of operations
-  (`mergeHeadersOps`), rejecting a route whose referenced policies assign
-  conflicting operations to the same header name
-  (`headersOpContains` / "header %q has conflicting operations").
-- `internal/controlplane/compile/policies_compiler.go` compiles each
-  named headers policy into `snapshot.CompiledHeaders`: a
-  `snapshot.HeaderInstruction` per operation, carrying a well-known
-  `HeaderID` and — for `set`/`add` — the literal value, computed once at
+- `internal/controlplane/validate` rejects conflicting operations within one
+  policy and across the headers policies a route references (see Validation
+  Requirements).
+- `internal/controlplane/compile/routes_compiler.go` merges the headers
+  policies a route references into one set of operations (`mergeHeadersOps`)
+  and compiles the result into that route's `CompiledRoutePolicies.Headers`.
+  Headers policies are not kept as separate compiled objects.
+- `internal/controlplane/compile/headers_registry.go` assigns every header name
+  a `snapshot.HeaderID`: well-known names receive fixed identifiers, and other
+  names receive dynamic identifiers that resolve through
+  `snapshot.HeaderRegistry`. Each `snapshot.HeaderInstruction` carries its
+  identifier and, for `set` and `add`, the literal value, computed once at
   compile time.
-- `internal/dataplane/policy/headers.go` (`ExecuteMutations`) applies a
-  compiled plan to an `http.Header` at request time: `remove`, then `set`,
-  then `add` (add-if-absent), in that fixed order.
+- `internal/dataplane/policy/headers.go` (`ExecuteMutations`) applies a compiled
+  plan to an `http.Header` at request time: `remove`, then `set`, then `add`
+  (add-if-absent), in that fixed order.
 
 ## Configuration Shape
 
@@ -89,22 +91,19 @@ just removed.
 
 ### Validation Requirements
 
-The control plane rejects invalid policies before runtime:
+The control plane rejects invalid policies in the `validate` stage, before
+compilation:
 
-- Header names in `add`, `set`, and `remove` must resolve to a known
-  `HeaderID` (`compile.resolveHeaderID`); an unresolvable name fails
-  compilation with an error naming the offending policy and header.
-- When a route references more than one headers policy, the merged
-  operation set must not assign conflicting operations
-  (`add`/`set`/`remove`) to the same header name within the same
-  direction (`request` or `response`); a conflict fails route compilation.
+- Header names in `add`, `set`, and `remove` must be valid HTTP field names.
+- When a route references more than one headers policy, no header may be
+  changed by two of them within the same direction (`request` or
+  `response`). A policy referenced twice by the same route conflicts with
+  itself.
 - A route referencing an undefined policy name (neither a headers policy
-  nor a rate-limit policy) fails compilation
-  (`validatePolicyRefsExist`).
+  nor a rate-limit policy) is rejected. So is a route referencing more than
+  one rate-limit policy.
 
-Header name matching for conflict detection is performed against the
-canonical `HeaderID` each name resolves to, which is equivalent to
-case-insensitive comparison for all currently supported header names.
+Header names are compared case-insensitively when checking for conflicts.
 
 ## Example
 
@@ -130,9 +129,7 @@ policies:
 
 Header-policy execution and hop-by-hop header removal
 (`internal/dataplane/request.RemoveHopHeaders`) are independent stages
-applied on both the request and response path. `RemoveHopHeaders` runs
-after header-policy mutations on the request side and after response
-headers are copied from upstream on the response side; a headers policy
+applied on both the request and response path. `RemoveHopHeaders` runs after the policy mutations on both paths: before the upstream call on the request side, and before the upstream response headers are copied to the client on the response side; a headers policy
 must not be relied upon to strip connection-scoped headers
 (`Connection`, `Transfer-Encoding`, `Keep-Alive`, and related headers) —
 that is `RemoveHopHeaders`'s responsibility regardless of policy

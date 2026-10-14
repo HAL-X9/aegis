@@ -18,7 +18,7 @@ At process startup:
    (path prefixes, method casing, header names, policy references).
 3. `internal/controlplane/compile` transforms the normalized model into
    `snapshot.CompiledConfig`: a method bitmask per route
-   (`contracts/methodmask`), precompiled header predicates
+   (`internal/httpmethod`), precompiled header predicates
    (`snapshot.HeaderPredicate`), and a parsed per-service upstream origin
    (`*url.URL`, scheme and host only).
 4. `compile.Index` builds the path index into `CompiledConfig.Index`. It
@@ -44,9 +44,12 @@ restart.
 `internal/controlplane/loader` loads the routes manifest and rejects
 invalid documents before compilation.
 
-`internal/controlplane/validate` enforces semantic constraints on the
-unmarshaled model (non-empty name, `path_prefix` starting with `/`,
-allowed methods, upstream scheme/host/port, and related rules).
+`internal/controlplane/validate` enforces every rule that depends on the
+configuration alone: the constraints of each section (non-empty name,
+`path_prefix` starting with `/`, allowed methods, upstream scheme/host/port,
+retry bounds), references between sections (routes to services and
+policies), and header conflicts between the policies a route combines. Its
+`Validated` output is complete input for compilation.
 
 `internal/controlplane/normalize` canonicalizes the validated model into a
 deterministic intermediate representation (`internal/controlplane/ir`).
@@ -133,9 +136,9 @@ overlapping prefixes depends on compile-time route order.
 
 ## Method matching
 
-At configuration time, `methodmask.BuildMethodMask` compiles the declared
+At configuration time, `httpmethod.MaskOf` compiles the declared
 method list into a bitmask. An empty method list is interpreted as
-`MethodAll`. At runtime, `methodmask.MethodBit` classifies the incoming
+`httpmethod.All`. At runtime, `httpmethod.Bit` classifies the incoming
 method; unsupported methods are rejected with `405` before candidate
 selection proceeds.
 
@@ -148,7 +151,7 @@ evaluation order. An empty value list (`[]`) is treated as a
 presence-only constraint. A non-empty value list is treated as an
 exact-value allowlist. Duplicate allowed values are removed while
 preserving first-seen order. Empty header names and empty allowed values
-are rejected during compilation.
+are rejected during validation.
 
 At runtime, `router.HeadersMatch` evaluates all compiled predicates using
 logical AND semantics. For allowlist predicates, matching succeeds when at

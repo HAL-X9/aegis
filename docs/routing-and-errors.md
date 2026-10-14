@@ -2,9 +2,8 @@
 
 This document is the single source of truth for two things that must stay
 in lock-step: how a request path is matched against the route table, and
-which HTTP status code `proxy.Executor` returns when. It replaces guesswork
-in code comments — every status code below is produced from exactly one
-place in `executor.go`.
+which HTTP status code `proxy.Executor` returns when. Every status code below
+is produced by `proxy.Executor.ServeHTTP` in `executor.go`.
 
 ## 1. Route matching semantics
 
@@ -106,31 +105,27 @@ GET /users/me
   -> route B matches (GET is allowed) -> served by route B
 ```
 
-Prior to this fix, the router returned only the most specific structural
-match's candidate list and never considered lower-priority branches once
-any structural match was found — which meant `GET /users/me` above
-incorrectly produced a 404/405 instead of falling back to `/users/:id`.
-This is now fixed: matching walks every priority tier, in order, and only
-stops once a route satisfies **both** structure and predicates.
+Matching walks every priority tier in order and stops only once a route
+satisfies **both** structure and predicates. A more specific structural match
+that rejects the method or headers therefore never hides a valid fallback
+route; in the example above, `GET /users/me` is served by route B.
 
 ## 2. Error responses
 
-`proxy.Executor.ServeHTTP` returns exactly one of the following outcomes
-per request. This table is the contract; the code must not add, remove, or
-reorder these without updating this document in the same change.
+`proxy.Executor.ServeHTTP` returns exactly one of the outcomes listed below
+for each request. This table is the contract: the code must not add, remove,
+or reorder outcomes without updating this document in the same change.
 
-| Status                        | Condition                                                                                                                                                                       | Notes                                                                                                        |
-|-------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
-| **503** Service Unavailable   | The routing engine is unavailable (`engine == nil`).                                                                                                                            | Startup/config-reload failure; never a per-route condition.                                                  |
-| **400** Bad Request           | The request path has no canonical form: it does not start with `/` or contains an encoded slash (`%2F`). See 1.0.                                                               | Returned before any route matching happens.                                                                  |
-| **500** Internal Server Error | The upstream transport is unavailable (`transport == nil`).                                                                                                                     | Configuration/bootstrap error, not a request-time condition.                                                 |
-| **400**/unsupported method    | The request method has no corresponding bit in `methodmask` (unrecognized HTTP method).                                                                                         | Returned before any route matching happens. Currently surfaced with a 405 status code — see open item below. |
-| **404** Not Found             | No route's path structure matches the request path at all, **or** a route's path matched but no candidate route at any priority tier had headers that satisfied its predicates. | See 2.1 for why the "headers didn't match" case is 404, not 405.                                             |
-| **405** Method Not Allowed    | At least one route's path matched the request, but none of the matching candidates — across *all* priority tiers — support the request method.                                  | Only returned when path matching succeeded somewhere and method is the sole blocker.                         |
-| **429** Too Many Requests     | A route matched (path + method + headers) but its rate-limit policy rejected the request.                                                                                       |                                                                                                              |
-| **502** Bad Gateway           | The upstream request failed for a reason other than a timeout.                                                                                                                  | Connection refused, reset, or protocol error.                                                                |
-| **504** Gateway Timeout       | A service `timeout`, a `retries.attempt_timeout` on the last attempt, the listener `request_timeout`, or a transport dial or response-header timeout expired.                   | Retries are attempted first while the service `timeout` allows.                                              |
-| **200-5xx** (passthrough)     | Upstream responded.                                                                                                                                                             | Status code, headers, and body are forwarded as received (after hop-header stripping and policy mutation).   |
+| Status | Condition | Notes |
+|---|---|---|
+| **503** Service Unavailable | No compiled view has been published (`view == nil`). | Startup failure; never a per-route condition. |
+| **400** Bad Request | The request path has no canonical form: it contains an encoded slash (`%2F`) or cannot be canonicalized (see 1.0). | Checked before route matching. |
+| **405** Method Not Allowed | (a) The request method is not a supported method (see `internal/httpmethod`); or (b) the path matched at least one route, but no matching candidate supports the request method. | Case (a) is checked before route matching. Case (b) is returned only when path matching succeeded. See 3 for the status code of case (a). |
+| **404** Not Found | No route's path structure matches the request path; or a path and method matched, but no candidate's header predicates were satisfied. | See 2.1 for why an unsatisfied header predicate yields 404. |
+| **429** Too Many Requests | A route matched (path, method, and headers), but its rate-limit policy rejected the request. | Checked before the first upstream attempt. |
+| **504** Gateway Timeout | A service `timeout`, a `retries.attempt_timeout` on the last attempt, the listener `request_timeout`, or a transport dial or response-header timeout expired. | Retries are attempted first while the service `timeout` allows. |
+| **502** Bad Gateway | The upstream request failed for a reason other than a timeout. | Connection refused, connection reset, or protocol error. |
+| **200–5xx** (passthrough) | The upstream responded. | Status, headers, and body are forwarded after hop-by-hop stripping and policy mutation. A 502, 503, or 504 response is passed through once retries are exhausted. |
 
 ### 2.1 Why a header mismatch is 404, not 405
 
@@ -145,8 +140,8 @@ that resource to otherwise be visible to the caller.
 
 ### 2.2 Route label on metrics
 
-Every request that reaches a fully matched route (past the 503/500/404/405
-checks above) is labeled on `routelabel` with the compiled route's `Name`
+Every request that reaches a fully matched route (past the 503, 400, 404, and
+405 checks above) is labeled on `routelabel` with the compiled route's `Name`
 before any subsequent 429/502 can occur, so those responses are still
 attributed to the correct route in metrics. `Name` is part of
 `snapshot.CompiledRoute`'s contract (see `docs/policies.md`,
@@ -156,8 +151,8 @@ the loader/compiler, not a valid state, and the executor labels it
 
 ## 3. Open items
 
-- Unsupported HTTP methods currently return 405 before route matching even
-  begins (`methodmask.MethodBit` failure). Consider 501 Not Implemented
-  instead, since this is unrelated to any specific route's allowed
-  methods — tracked separately, not changed in this pass to keep this fix
-  scoped to the matching-priority and prefix-semantics bugs.
+- **Status code for unrecognized HTTP methods.** Such requests are currently
+  answered with `405 Method Not Allowed` (case (a) in the table in section 2).
+  RFC 9110 suggests `501 Not Implemented` for methods a server does not
+  implement. Changing the status is a contract change and is not part of the
+  current behavior.

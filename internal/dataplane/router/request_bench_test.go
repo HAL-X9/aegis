@@ -53,6 +53,9 @@ var (
 	sinkBool  bool
 )
 
+// Taking the addresses marks the write-only sinks as used.
+var _ = []any{&sinkIDs, &sinkRoute, &sinkBool}
+
 const routingTableSize = 256
 
 type headerMode int
@@ -123,6 +126,9 @@ func buildBenchEngine(
 	var preds []snapshot.HeaderPredicate
 
 	switch hm {
+	case headerNone:
+		// no predicates
+
 	case headerPresence:
 		preds = []snapshot.HeaderPredicate{
 			{

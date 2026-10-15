@@ -11,6 +11,8 @@ import (
 // headerSink keeps benchmarked headers on the heap, as they are in use.
 var headerSink http.Header
 
+var _ = &headerSink // marks the write-only sink as used
+
 func TestUpstreamHeader(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "http://gateway.local/api", nil)
 	r.RemoteAddr = "203.0.113.7:51234"

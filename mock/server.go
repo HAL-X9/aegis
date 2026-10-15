@@ -76,7 +76,7 @@ func logStatus(next http.Handler) http.Handler {
 	})
 }
 
-func handleProfile(w http.ResponseWriter, r *http.Request) {
+func handleProfile(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {

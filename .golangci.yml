@@ -6,6 +6,188 @@ linters:
   # Standard set: errcheck, govet, ineffassign, staticcheck, unused.
   # govet here subsumes the standalone `go vet` step.
   default: standard
+  enable:
+    - depguard
+
+  settings:
+    # Layer rules: ARCHITECTURE.md ("Dependency rules") is the human-readable
+    # version of this block. depguard checks direct imports of every file, tests
+    # included, so a layer is kept honest transitively as long as each layer has
+    # a rule. A package that matches no rule is unchecked: add a rule when
+    # adding a top-level package under internal/.
+    #
+    # Two styles are used on purpose:
+    #   - leaf layers use list-mode "strict" (an allow-list): anything not named,
+    #     including a new third-party module, fails;
+    #   - the other layers use "lax" (a deny-list of the layers they must not reach).
+    #
+    # Rules marked TODO(arch) record a known violation that is still allowed.
+    # Each one names the refactoring step that removes it; removing the rule
+    # (or the exempting file pattern) is part of that step.
+    depguard:
+      rules:
+        # --- Leaf layers: allow-lists ---------------------------------------
+        httpmethod:
+          list-mode: strict
+          files:
+            - "**/internal/httpmethod/**"
+          allow:
+            - $gostd
+
+        snapshot:
+          # The compiled contract between the control plane and the data plane.
+          # It may know about methods and nothing else.
+          list-mode: strict
+          files:
+            - "**/internal/snapshot/**"
+          allow:
+            - $gostd
+            - github.com/HAL-X9/aegis/internal/httpmethod
+            # TODO(arch) follow-up: CompiledRateLimit.Limit is a rate.Limit, so
+            # the contract leaks the limiter library. Make it a float64 in the
+            # snapshot and convert in dataplane/policy, then drop this line.
+            - golang.org/x/time/rate
+
+        config:
+          # Data, defaults and validation of the process config.
+          list-mode: strict
+          files:
+            - "**/internal/config/**"
+          allow:
+            - $gostd
+            - gopkg.in/yaml.v3
+
+        observe:
+          list-mode: strict
+          files:
+            - "**/internal/observe/**"
+          allow:
+            - $gostd
+            - github.com/prometheus/client_golang
+
+        # --- Control plane: must not reach the serving side -----------------
+        controlplane:
+          list-mode: lax
+          files:
+            - "**/internal/controlplane/**"
+          deny:
+            - pkg: github.com/HAL-X9/aegis/internal/dataplane
+              desc: the control plane compiles configuration; it must not depend on the data plane
+            - pkg: github.com/HAL-X9/aegis/internal/edge
+              desc: the control plane must not depend on the HTTP edge
+            - pkg: github.com/HAL-X9/aegis/internal/observe
+              desc: the control plane must not depend on observability
+            - pkg: github.com/HAL-X9/aegis/internal/app
+              desc: only cmd may depend on the composition root
+
+        controlplane-config:
+          # TODO(arch) step 1: loader imports internal/config only for the
+          # generic ReadAndDecodeYaml. Move it to a neutral package, then delete
+          # the loader exemption below so this rule covers the whole control plane.
+          list-mode: lax
+          files:
+            - "**/internal/controlplane/**"
+            - "!**/internal/controlplane/loader/**"
+          deny:
+            - pkg: github.com/HAL-X9/aegis/internal/config
+              desc: the control plane reads the routes manifest, not the process config
+
+        # --- Data plane: must not reach up or sideways ----------------------
+        dataplane:
+          list-mode: lax
+          files:
+            - "**/internal/dataplane/**"
+            - "!**/*_test.go"
+          deny:
+            - pkg: github.com/HAL-X9/aegis/internal/controlplane
+              desc: the data plane reads the compiled snapshot; it must not depend on the control plane
+            - pkg: github.com/HAL-X9/aegis/internal/edge
+              desc: the data plane must not depend on the HTTP edge
+            - pkg: github.com/HAL-X9/aegis/internal/config
+              desc: the data plane receives what it needs through snapshot or constructor arguments
+            - pkg: github.com/HAL-X9/aegis/internal/app
+              desc: only cmd may depend on the composition root
+
+        dataplane-tests:
+          # TODO(arch) step 6: data plane tests build their snapshots with the
+          # real compiler (controlplane/compile). Give snapshot a small test
+          # builder, then fold this rule into "dataplane" above.
+          list-mode: lax
+          files:
+            - "**/internal/dataplane/**/*_test.go"
+          deny:
+            - pkg: github.com/HAL-X9/aegis/internal/controlplane/loader
+              desc: data plane tests may use the compiler, not the rest of the control plane
+            - pkg: github.com/HAL-X9/aegis/internal/controlplane/validate
+              desc: data plane tests may use the compiler, not the rest of the control plane
+            - pkg: github.com/HAL-X9/aegis/internal/controlplane/normalize
+              desc: data plane tests may use the compiler, not the rest of the control plane
+            - pkg: github.com/HAL-X9/aegis/internal/controlplane/schema
+              desc: data plane tests may use the compiler, not the rest of the control plane
+            - pkg: github.com/HAL-X9/aegis/internal/controlplane/ir
+              desc: data plane tests may use the compiler, not the rest of the control plane
+            - pkg: github.com/HAL-X9/aegis/internal/controlplane/pipeline
+              desc: data plane tests may use the compiler, not the rest of the control plane
+            - pkg: github.com/HAL-X9/aegis/internal/edge
+              desc: the data plane must not depend on the HTTP edge
+            - pkg: github.com/HAL-X9/aegis/internal/config
+              desc: the data plane receives what it needs through snapshot or constructor arguments
+            - pkg: github.com/HAL-X9/aegis/internal/app
+              desc: only cmd may depend on the composition root
+
+        dataplane-observe:
+          # TODO(arch) step 4: dataplane/middleware imports observe/metrics. It
+          # is HTTP plumbing, not routing or proxying, and moves to the edge;
+          # then delete the middleware exemption so the whole data plane is covered.
+          list-mode: lax
+          files:
+            - "**/internal/dataplane/**"
+            - "!**/internal/dataplane/middleware/**"
+          deny:
+            - pkg: github.com/HAL-X9/aegis/internal/observe
+              desc: the data plane stays free of observability backends
+
+        # --- Edge: allow-list ------------------------------------------------
+        edge:
+          # The edge reaches the data plane only through interfaces it declares
+          # (RequestExecutor, Probe), plus the two temporary imports below.
+          list-mode: strict
+          files:
+            - "**/internal/edge/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/HAL-X9/aegis/internal/observe
+            # TODO(arch) step 3: servers take their listener slice, not the whole
+            # config.Runtime; the config import may then shrink or go.
+            - github.com/HAL-X9/aegis/internal/config
+            # TODO(arch) step 4: the middleware package moves under edge.
+            - github.com/HAL-X9/aegis/internal/dataplane/middleware
+
+        edge-tests:
+          # Same as "edge", plus prometheus: a test builds its own registry.
+          # Production edge code still reaches Prometheus only through observe.
+          list-mode: strict
+          files:
+            - "**/internal/edge/**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/HAL-X9/aegis/internal/observe
+            - github.com/HAL-X9/aegis/internal/config
+            - github.com/HAL-X9/aegis/internal/dataplane/middleware
+            - github.com/prometheus/client_golang
+
+        # --- Composition root -------------------------------------------------
+        no-app:
+          # internal/app wires everything, so nothing inside internal/ may
+          # depend on it. Binaries and tests outside internal/ are free to.
+          list-mode: lax
+          files:
+            - "**/internal/**"
+            - "!**/internal/app/**"
+          deny:
+            - pkg: github.com/HAL-X9/aegis/internal/app
+              desc: only cmd and tests may depend on the composition root
 
 formatters:
   enable:

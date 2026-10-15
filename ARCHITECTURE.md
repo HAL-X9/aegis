@@ -138,6 +138,34 @@ sequenceDiagram
 | `internal/edge` | Listener-facing HTTP servers: public traffic and admin endpoints |
 | `internal/observe` | Health checks and Prometheus metrics registration |
 
+## Dependency rules
+
+The layering is enforced by the `depguard` linter, configured in [.golangci.yml](.golangci.yml) and run in CI by `make lint`. A violation fails the build; the rules below are the prose version of that file.
+
+| Layer | May import | Must not import |
+|---|---|---|
+| `httpmethod` | standard library | everything else |
+| `snapshot` | `httpmethod` | everything else |
+| `config` | `gopkg.in/yaml.v3` | other internal packages |
+| `observe` | `prometheus/client_golang` | other internal packages |
+| `controlplane` | `snapshot`, `httpmethod`, its own subpackages | `dataplane`, `edge`, `observe`, `app`, and `config` |
+| `dataplane` | `snapshot`, `httpmethod`, its own subpackages | `controlplane`, `edge`, `config`, `observe`, `app` |
+| `edge` | `observe`, standard library | `controlplane`, `dataplane` internals, `app` |
+| `app` | everything (composition root) | — |
+
+Nothing under `internal/` may import `internal/app`; only `cmd` and tests outside `internal/` do.
+
+The leaf layers (first four rows, plus `edge`) use an allow-list, so a new import, including a new third-party module, fails until it is named in the config. The others use a deny-list of the layers they must not reach. Test files have their own rules: for example, data plane tests may build snapshots with `controlplane/compile`, and edge tests may create a Prometheus registry.
+
+**Known violations.** Each is marked `TODO(arch)` in `.golangci.yml` and is allowed only until the step that removes it:
+
+- `controlplane/loader` imports `config` for the shared YAML decoder.
+- `dataplane/middleware` imports `observe/metrics`, and `edge` imports `dataplane/middleware` and the whole of `config`; the middleware belongs to the edge.
+- `snapshot` imports `golang.org/x/time/rate` because `CompiledRateLimit.Limit` is a `rate.Limit`.
+- Data plane tests use `controlplane/compile` to build snapshots.
+
+**Limits of the check.** `depguard` inspects direct imports only, which is sufficient here because every layer has a rule. A new top-level package under `internal/` is covered only by the rule that forbids importing `app`; give it a rule when you add it.
+
 ## Roadmap / known limitations
 
 This is a pre-1.0 project. The following items are not implemented; they are deferred deliberately:

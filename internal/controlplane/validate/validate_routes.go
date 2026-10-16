@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/HAL-X9/aegis/internal/controlplane/schema"
 	"github.com/HAL-X9/aegis/internal/httpmethod"
@@ -80,6 +81,13 @@ func validatePathPrefix(path string) error {
 	}
 	if strings.ContainsAny(path, "?#") {
 		return fmt.Errorf("%q must not contain '?' or '#'", path)
+	}
+	// Normalization trims Unicode whitespace, so allowing it would let "/ "
+	// normalize to "/" and silently turn a one-segment route into a catch-all.
+	for _, r := range path {
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			return fmt.Errorf("%q must not contain whitespace or control characters", path)
+		}
 	}
 	if path == "/" {
 		return nil

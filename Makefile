@@ -45,6 +45,24 @@ test: ## Run tests
 test-race: ## Run tests with race detector
 	go test ./... -race
 
+# Every fuzz target as <package>:<target>. `go test -fuzz` accepts one target in
+# one package per invocation, so the fuzz recipe loops over this list.
+FUZZ_TARGETS := \
+	./internal/dataplane/request:FuzzCanonicalPath \
+	./internal/dataplane/proxy:FuzzExecutorPathAgreement \
+	./internal/controlplane/validate:FuzzValidatePathPrefix \
+	./internal/controlplane/pipeline:FuzzPathPrefixBuild \
+	./internal/controlplane/compile:FuzzIndexLookup
+FUZZTIME ?= 30s
+
+.PHONY: fuzz
+fuzz: ## Fuzz every target for FUZZTIME each (default 30s)
+	@for target in $(FUZZ_TARGETS); do \
+		pkg=$${target%%:*}; name=$${target##*:}; \
+		echo "==> $$name ($(FUZZTIME))"; \
+		go test "$$pkg" -run '^$$' -fuzz "^$$name$$" -fuzztime $(FUZZTIME) || exit 1; \
+	done
+
 .PHONY: coverage
 coverage: ## Run tests with coverage
 	go test ./... -cover

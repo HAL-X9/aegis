@@ -23,7 +23,7 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
 }
 
-func buildTestEngine(t *testing.T, cfg *snapshot.CompiledConfig) *router.Engine {
+func buildTestEngine(t testing.TB, cfg *snapshot.CompiledConfig) *router.Engine {
 	t.Helper()
 
 	engine, err := newTestEngine(cfg)
@@ -86,7 +86,7 @@ func testConfig(routes ...snapshot.CompiledRoute) *snapshot.CompiledConfig {
 }
 
 func newTestExecutor(
-	t *testing.T,
+	t testing.TB,
 	engine *router.Engine,
 	transport http.RoundTripper,
 ) *Executor {

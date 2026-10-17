@@ -58,9 +58,11 @@ go build -o app ./cmd
 ## Testing & benchmarks
 
 ```bash
-go test ./...
-go test ./internal/dataplane/router/ -bench . -benchmem
+make test
+make test-race
 make fuzz
+make bench
+make bench-proxy
 ```
 
 ## Status

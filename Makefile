@@ -71,6 +71,12 @@ coverage: ## Run tests with coverage
 bench: ## Run router benchmarks
 	go test ./internal/dataplane/router/ -bench . -benchmem
 
+.PHONY: bench-proxy
+bench-proxy: ## Run proxy benchmarks (10 repetitions)
+	go test ./internal/dataplane/proxy/ -run '^$$' \
+		-bench 'BenchmarkProxyServeHTTP$$|BenchmarkRoundTripWarm|BenchmarkFullProxyE2E' \
+		-benchmem -count 10
+
 .PHONY: up
 up: ## Build and start Docker stack
 	$(DOCKER_COMPOSE) up -d --build

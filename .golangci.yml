@@ -55,6 +55,15 @@ linters:
             - "**/internal/config/**"
           allow:
             - $gostd
+            - github.com/HAL-X9/aegis/internal/yamlx
+
+        yamlx:
+          # Strict YAML decoding shared by config and the routes loader.
+          list-mode: strict
+          files:
+            - "**/internal/yamlx/**"
+          allow:
+            - $gostd
             - gopkg.in/yaml.v3
 
         observe:
@@ -79,16 +88,6 @@ linters:
               desc: the control plane must not depend on observability
             - pkg: github.com/HAL-X9/aegis/internal/app
               desc: only cmd may depend on the composition root
-
-        controlplane-config:
-          # TODO(arch) step 1: loader imports internal/config only for the
-          # generic ReadAndDecodeYaml. Move it to a neutral package, then delete
-          # the loader exemption below so this rule covers the whole control plane.
-          list-mode: lax
-          files:
-            - "**/internal/controlplane/**"
-            - "!**/internal/controlplane/loader/**"
-          deny:
             - pkg: github.com/HAL-X9/aegis/internal/config
               desc: the control plane reads the routes manifest, not the process config
 

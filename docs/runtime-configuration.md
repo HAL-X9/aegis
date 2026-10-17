@@ -52,7 +52,7 @@ If neither is supplied, the process terminates with an error. No default path is
 
 ### 2.2 Decoding
 
-The file is read in its entirety and decoded by `gopkg.in/yaml.v3` with the `KnownFields` option enabled ([load.go](../internal/config/load.go)). Consequently, **any key that has no corresponding field in the Go type is an error**; it is not ignored. This behavior protects against typographical errors: a misspelled key such as `read_timout` produces a failure at startup rather than being silently discarded.
+The file is read in its entirety and decoded by `gopkg.in/yaml.v3` with the `KnownFields` option enabled ([yamlx.go](../internal/yamlx/yamlx.go)). Consequently, **any key that has no corresponding field in the Go type is an error**; it is not ignored. This behavior protects against typographical errors: a misspelled key such as `read_timout` produces a failure at startup rather than being silently discarded.
 
 Only the first YAML document in the file is decoded. An empty file produces a decoding error whose message contains `EOF`.
 

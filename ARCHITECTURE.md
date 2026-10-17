@@ -146,7 +146,8 @@ The readiness flip and the listener shutdown happen back to back, with no grace 
 | Package | Responsibility |
 |---|---|
 | `internal/app` | Process wiring: dependency container, lifecycle, graceful shutdown |
-| `internal/config` | Runtime configuration: flag and environment resolution, strict YAML decoding |
+| `internal/yamlx` | Strict YAML decoding shared by the runtime configuration and the routes manifest loader |
+| `internal/config` | Runtime configuration: environment path resolution, defaults, validation |
 | `internal/httpmethod` | HTTP method set and bitmask, shared by validation, the compiler, and the router |
 | `internal/controlplane` | Load → validate → normalize → compile pipeline. Subpackages: `schema` (source model), `loader`, `validate`, `normalize`, `ir`, `compile`, `pipeline` |
 | `internal/snapshot` | Immutable compiled data contract, including `RouteIndex` |
@@ -168,7 +169,8 @@ The layering is enforced by the `depguard` linter, configured in [.golangci.yml]
 |---|---|---|
 | `httpmethod` | standard library | everything else |
 | `snapshot` | `httpmethod` | everything else |
-| `config` | `gopkg.in/yaml.v3` | other internal packages |
+| `yamlx` | `gopkg.in/yaml.v3` | other internal packages |
+| `config` | `yamlx` | other internal packages |
 | `observe` | `prometheus/client_golang` | other internal packages |
 | `controlplane` | `snapshot`, `httpmethod`, its own subpackages | `dataplane`, `edge`, `observe`, `app`, and `config` |
 | `dataplane` | `snapshot`, `httpmethod`, its own subpackages | `controlplane`, `edge`, `config`, `observe`, `app` |
@@ -177,11 +179,10 @@ The layering is enforced by the `depguard` linter, configured in [.golangci.yml]
 
 Nothing under `internal/` may import `internal/app`; only `cmd` and tests outside `internal/` do.
 
-The leaf layers (first four rows, plus `edge`) use an allow-list, so a new import, including a new third-party module, fails until it is named in the config. The others use a deny-list of the layers they must not reach. Test files have their own rules: for example, data plane tests may build snapshots with `controlplane/compile`, and edge tests may create a Prometheus registry.
+The leaf layers (first five rows, plus `edge`) use an allow-list, so a new import, including a new third-party module, fails until it is named in the config. The others use a deny-list of the layers they must not reach. Test files have their own rules: for example, data plane tests may build snapshots with `controlplane/compile`, and edge tests may create a Prometheus registry.
 
 **Known violations.** Each is marked `TODO(arch)` in `.golangci.yml` and is allowed only until the step that removes it:
 
-- `controlplane/loader` imports `config` for the shared YAML decoder.
 - `dataplane/middleware` imports `observe/metrics`, and `edge` imports `dataplane/middleware` and the whole of `config`; the middleware belongs to the edge.
 - `snapshot` imports `golang.org/x/time/rate` because `CompiledRateLimit.Limit` is a `rate.Limit`.
 - Data plane tests use `controlplane/compile` to build snapshots.

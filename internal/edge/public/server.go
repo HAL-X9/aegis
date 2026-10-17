@@ -6,6 +6,7 @@ import (
 
 	"github.com/HAL-X9/aegis/internal/config"
 	"github.com/HAL-X9/aegis/internal/dataplane/middleware"
+	"github.com/HAL-X9/aegis/internal/edge/tlsconfig"
 	"github.com/HAL-X9/aegis/internal/observe/metrics"
 )
 
@@ -19,7 +20,7 @@ func NewPublicServer(
 	executor RequestExecutor,
 	collector *metrics.Metrics,
 ) (*http.Server, error) {
-	tlsConfig, err := config.BuildTLSConfig(cfg.Listeners.Public.TLS)
+	tlsConfig, err := tlsconfig.Build(cfg.Listeners.Public.TLS)
 	if err != nil {
 		return nil, fmt.Errorf("build public TLS configuration: %w", err)
 	}

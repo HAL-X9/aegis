@@ -44,15 +44,15 @@ func Build(validated validate.Validated) (*snapshot.CompiledConfig, error) {
 		return nil, fmt.Errorf("build compiled configuration: route index failed: %w", err)
 	}
 
-	policies, err := compile.Policies(normalizedPolicies)
+	rateLimits, err := compile.RateLimits(normalizedPolicies)
 	if err != nil {
-		return nil, fmt.Errorf("build compiled configuration: policy build failed: %w", err)
+		return nil, fmt.Errorf("build compiled configuration: rate limit build failed: %w", err)
 	}
 
 	return &snapshot.CompiledConfig{
 		Services:    services,
 		Routes:      routes,
-		Policies:    *policies,
+		RateLimits:  *rateLimits,
 		HeaderNames: headerIDs.Registry(),
 		Index:       index,
 	}, nil

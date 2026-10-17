@@ -9,7 +9,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// Policies compiles the normalized IR rate-limit policies into a snapshot
+// RateLimits compiles the normalized IR rate-limit policies into a snapshot
 // ready for the data-plane hot path.
 //
 // Named header policies are intentionally not compiled here. A route
@@ -17,8 +17,8 @@ import (
 // onto that route's own CompiledRoute.Policies.Headers (see
 // compileRoutePolicyHeaders in routes_compiler.go); nothing on the hot
 // path looks a header plan up by policy name, so a second, policy-keyed
-// copy is never built. See snapshot.CompiledPolicies's doc comment.
-func Policies(policies *ir.Policies) (*snapshot.CompiledPolicies, error) {
+// copy is never built. See snapshot.CompiledRateLimits's doc comment.
+func RateLimits(policies *ir.Policies) (*snapshot.CompiledRateLimits, error) {
 	if policies == nil {
 		return nil, fmt.Errorf("compile policies configuration: config is nil")
 	}
@@ -33,8 +33,8 @@ func Policies(policies *ir.Policies) (*snapshot.CompiledPolicies, error) {
 		})
 	}
 
-	return &snapshot.CompiledPolicies{
-		RateLimits: compiledRateLimits,
+	return &snapshot.CompiledRateLimits{
+		Items: compiledRateLimits,
 	}, nil
 }
 

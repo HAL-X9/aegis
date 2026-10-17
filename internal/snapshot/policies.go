@@ -2,43 +2,6 @@ package snapshot
 
 import "golang.org/x/time/rate"
 
-// HeaderID is a compact runtime identifier.
-//
-// Static well-known headers are resolved during compilation
-// into fixed numeric identifiers.
-//
-// Dynamic/custom headers are also assigned stable IDs
-// inside the compiled configuration snapshot.
-//
-// Runtime must never perform:
-//   - string normalization
-//   - canonicalization
-//   - map lookups by string
-type HeaderID uint16
-
-const (
-	HeaderUnknown HeaderID = iota
-
-	HeaderHost
-	HeaderContentType
-	HeaderContentLength
-
-	HeaderAuthorization
-
-	HeaderXForwardedFor
-	HeaderXForwardedProto
-	HeaderXRequestID
-
-	HeaderServer
-
-	HeaderXContentTypeOptions
-	HeaderXFrameOptions
-	HeaderXXSSProtection
-
-	// HeaderDynamicStart Dynamic headers begin here.
-	HeaderDynamicStart
-)
-
 // HeaderOpCode is a compiled executable operation.
 //
 // Runtime executor should behave like a tiny VM:
@@ -100,27 +63,21 @@ type CompiledHeaders struct {
 	Response CompiledHeadersPlan
 }
 
-// HeaderRegistry resolves HeaderID into canoniƒcal header names.
-//
-// Registry is immutable after compilation.
-//
-// Runtime should use direct indexed lookup:
-//
-//	name := registry.Names[id]
-//
-// No maps on hot path.
-type HeaderRegistry struct {
-	Names []string
-}
-
+// CompiledRateLimit is the runtime definition of one rate-limit policy, a
+// token bucket: Limit is the sustained rate in requests per second and Burst
+// the bucket size. A route selects its policy by index through
+// CompiledRoutePolicies.RateLimitID.
 type CompiledRateLimit struct {
 	Limit rate.Limit
 	Burst int
 }
 
-// CompiledPolicies holds the compiled rate-limit definitions. Header policies
-// are not kept here: each route's header plan is merged from its referenced
-// policies and stored in CompiledRoutePolicies.Headers.
-type CompiledPolicies struct {
-	RateLimits []CompiledRateLimit
+// CompiledRateLimits holds the compiled rate-limit definitions, addressed by
+// CompiledRoutePolicies.RateLimitID.
+//
+// Header policies are not kept here: each route's header plan is merged from
+// its referenced policies and stored in CompiledRoutePolicies.Headers.
+type CompiledRateLimits struct {
+	// Items stores the definitions in deterministic order, sorted by policy name.
+	Items []CompiledRateLimit
 }

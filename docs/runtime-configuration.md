@@ -205,7 +205,7 @@ The system listener SHOULD be bound to an internal interface. The value `0.0.0.0
 
 ### 4.4 TLS
 
-The section `tls` enables HTTPS for a listener ([tls.go](../internal/config/tls.go)). Its presence requires that both fields be supplied:
+The section `tls` enables HTTPS for a listener ([tlsconfig.go](../internal/edge/tlsconfig/tlsconfig.go)). Its presence requires that both fields be supplied:
 
 ```yaml
 tls:
@@ -400,7 +400,7 @@ The field `listeners.system.timeouts.request_timeout` exists in the type because
 |---------------------------------|-----------------------------------------------------------|----------------------------------------------------------------------------------------|
 | Path resolution and loading     | this document, Section 2                                  | [resolve.go](../internal/config/resolve.go), [app.go](../internal/app/app.go)          |
 | Types and validation            | this document, Sections 4 to 6                            | [types.go](../internal/config/types.go), [validate.go](../internal/config/validate.go) |
-| TLS                             | Section 4.4                                               | [tls.go](../internal/config/tls.go)                                                    |
+| TLS                             | Section 4.4                                               | [tlsconfig.go](../internal/edge/tlsconfig/tlsconfig.go)                                                    |
 | Lifecycle and shutdown          | [ARCHITECTURE.md](../ARCHITECTURE.md#process-lifecycle)   | [lifecycle.go](../internal/app/lifecycle.go)                                           |
 | Service timeouts and retries    | [configuration.md](configuration.md#timeouts-and-retries) | [retry.go](../internal/dataplane/retry/retry.go)                                       |
 | Routing errors and status codes | [routing-and-errors.md](routing-and-errors.md)            | [executor.go](../internal/dataplane/proxy/executor.go)                                 |

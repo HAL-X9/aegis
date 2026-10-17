@@ -21,9 +21,10 @@ Headers policy validation, merging, and runtime mutation are implemented:
   and compiles the result into that route's `CompiledRoutePolicies.Headers`.
   Headers policies are not kept as separate compiled objects.
 - `internal/controlplane/compile/headers_registry.go` assigns every header name
-  a `snapshot.HeaderID`: well-known names receive fixed identifiers, and other
-  names receive dynamic identifiers that resolve through
-  `snapshot.HeaderRegistry`. Each `snapshot.HeaderInstruction` carries its
+  a `snapshot.HeaderID`: well-known names receive the fixed identifiers defined
+  by the single table in `internal/snapshot/headers.go` (which the data plane
+  also uses to resolve identifiers back to names), and other names receive
+  dynamic identifiers that resolve through `snapshot.HeaderRegistry`. Each `snapshot.HeaderInstruction` carries its
   identifier and, for `set` and `add`, the literal value, computed once at
   compile time.
 - `internal/dataplane/policy/headers.go` (`ExecuteMutations`) applies a compiled

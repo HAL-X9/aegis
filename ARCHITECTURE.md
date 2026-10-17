@@ -174,7 +174,7 @@ The layering is enforced by the `depguard` linter, configured in [.golangci.yml]
 | `observe` | `prometheus/client_golang` | other internal packages |
 | `controlplane` | `snapshot`, `httpmethod`, its own subpackages | `dataplane`, `edge`, `observe`, `app`, and `config` |
 | `dataplane` | `snapshot`, `httpmethod`, its own subpackages | `controlplane`, `edge`, `config`, `observe`, `app` |
-| `edge` | `observe`, standard library; transitionally `config` and `dataplane/middleware` (see below) | `controlplane`, other `dataplane` packages, `app` |
+| `edge` | `observe`, standard library, its own subpackages; transitionally `config` and `dataplane/middleware` (see below) | `controlplane`, other `dataplane` packages, `app` |
 | `app` | everything (composition root) | — |
 
 Nothing under `internal/` may import `internal/app`; only `cmd` and tests outside `internal/` do.

@@ -9,15 +9,15 @@ import (
 	"golang.org/x/time/rate"
 )
 
-func TestPolicies_nilReturnsError(t *testing.T) {
-	_, err := Policies(nil)
+func TestRateLimits_nilReturnsError(t *testing.T) {
+	_, err := RateLimits(nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
 
-func TestPolicies_emptyReturnsEmptySnapshot(t *testing.T) {
-	out, err := Policies(&ir.Policies{})
+func TestRateLimits_emptyReturnsEmptySnapshot(t *testing.T) {
+	out, err := RateLimits(&ir.Policies{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -26,13 +26,13 @@ func TestPolicies_emptyReturnsEmptySnapshot(t *testing.T) {
 		t.Fatal("expected non-nil compiled policies")
 	}
 
-	if len(out.RateLimits) != 0 {
-		t.Fatalf("expected no compiled rate limits, got %d", len(out.RateLimits))
+	if len(out.Items) != 0 {
+		t.Fatalf("expected no compiled rate limits, got %d", len(out.Items))
 	}
 }
 
-func TestPolicies_compilesRateLimits(t *testing.T) {
-	out, err := Policies(&ir.Policies{
+func TestRateLimits_compilesRateLimits(t *testing.T) {
+	out, err := RateLimits(&ir.Policies{
 		RateLimits: map[string]ir.RateLimit{
 			"api": {
 				Rate:  10,
@@ -44,11 +44,11 @@ func TestPolicies_compilesRateLimits(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(out.RateLimits) != 1 {
-		t.Fatalf("expected 1 compiled rate limit, got %d", len(out.RateLimits))
+	if len(out.Items) != 1 {
+		t.Fatalf("expected 1 compiled rate limit, got %d", len(out.Items))
 	}
 
-	got := out.RateLimits[0]
+	got := out.Items[0]
 
 	if got.Limit != rate.Limit(10) {
 		t.Errorf("Limit = %v, want %v", got.Limit, rate.Limit(10))
@@ -60,8 +60,8 @@ func TestPolicies_compilesRateLimits(t *testing.T) {
 }
 
 // Rate limits must be emitted in deterministic name order.
-func TestPolicies_rateLimitsDeterministicOrder(t *testing.T) {
-	out, err := Policies(&ir.Policies{
+func TestRateLimits_rateLimitsDeterministicOrder(t *testing.T) {
+	out, err := RateLimits(&ir.Policies{
 		RateLimits: map[string]ir.RateLimit{
 			"z-limit": {
 				Rate:  30,
@@ -81,8 +81,8 @@ func TestPolicies_rateLimitsDeterministicOrder(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(out.RateLimits) != 3 {
-		t.Fatalf("expected 3 compiled rate limits, got %d", len(out.RateLimits))
+	if len(out.Items) != 3 {
+		t.Fatalf("expected 3 compiled rate limits, got %d", len(out.Items))
 	}
 
 	want := []snapshot.CompiledRateLimit{
@@ -100,8 +100,8 @@ func TestPolicies_rateLimitsDeterministicOrder(t *testing.T) {
 		},
 	}
 
-	if !reflect.DeepEqual(out.RateLimits, want) {
-		t.Fatalf("compiled rate limits = %+v, want %+v", out.RateLimits, want)
+	if !reflect.DeepEqual(out.Items, want) {
+		t.Fatalf("compiled rate limits = %+v, want %+v", out.Items, want)
 	}
 }
 

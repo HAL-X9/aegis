@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/HAL-X9/aegis/internal/config"
+	"github.com/HAL-X9/aegis/internal/edge/tlsconfig"
 )
 
 func NewSystemServer(
@@ -12,7 +13,7 @@ func NewSystemServer(
 	probe Probe,
 	metrics http.Handler,
 ) (*http.Server, error) {
-	tlsConfig, err := config.BuildTLSConfig(cfg.Listeners.System.TLS)
+	tlsConfig, err := tlsconfig.Build(cfg.Listeners.System.TLS)
 	if err != nil {
 		return nil, fmt.Errorf("build system TLS configuration: %w", err)
 	}

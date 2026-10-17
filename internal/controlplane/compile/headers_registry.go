@@ -2,29 +2,10 @@ package compile
 
 import "github.com/HAL-X9/aegis/internal/snapshot"
 
-// wellKnownHeaderIDs assigns the fixed, statically-known snapshot.HeaderID
-// values used throughout the compiler. Any header name not listed here is
-// a custom header and gets a dynamic ID from HeaderRegistryBuilder.
-var wellKnownHeaderIDs = map[string]snapshot.HeaderID{
-	"Host":                   snapshot.HeaderHost,
-	"Content-Type":           snapshot.HeaderContentType,
-	"Content-Length":         snapshot.HeaderContentLength,
-	"Authorization":          snapshot.HeaderAuthorization,
-	"X-Forwarded-For":        snapshot.HeaderXForwardedFor,
-	"X-Forwarded-Proto":      snapshot.HeaderXForwardedProto,
-	"X-Request-ID":           snapshot.HeaderXRequestID,
-	"X-Request-Id":           snapshot.HeaderXRequestID,
-	"Server":                 snapshot.HeaderServer,
-	"X-Content-Type-Options": snapshot.HeaderXContentTypeOptions,
-	"X-Frame-Options":        snapshot.HeaderXFrameOptions,
-	"X-XSS-Protection":       snapshot.HeaderXXSSProtection,
-	"X-Xss-Protection":       snapshot.HeaderXXSSProtection,
-}
-
 // HeaderRegistryBuilder assigns snapshot.HeaderID values to header names
 // seen while compiling routes.
 //
-// Well-known names use fixed IDs. Custom names receive sequential dynamic IDs
+// Well-known names use the fixed IDs defined in snapshot. Custom names receive sequential dynamic IDs
 // starting at snapshot.HeaderDynamicStart.
 //
 // One builder must be shared by every compile.Routes call belonging to the
@@ -43,7 +24,7 @@ func NewHeaderRegistryBuilder() *HeaderRegistryBuilder {
 }
 
 func (b *HeaderRegistryBuilder) resolve(name string) snapshot.HeaderID {
-	if id, ok := wellKnownHeaderIDs[name]; ok {
+	if id, ok := snapshot.WellKnownHeaderID(name); ok {
 		return id
 	}
 

@@ -27,6 +27,7 @@ type Dependencies struct {
 	PublicHTTP *http.Server
 	SystemHTTP *http.Server
 	Health     *health.Health
+	Engine     *router.Engine
 }
 
 // Bootstrap compiles the routes manifest, builds the routing engine and
@@ -48,7 +49,7 @@ func Bootstrap(cfg *config.Runtime, manifest validate.Validated) (*Dependencies,
 		return nil, fmt.Errorf("build route engine: %w", err)
 	}
 
-	rateLimiters := policy.NewRateLimiterSet(compiled.Policies.RateLimits)
+	rateLimiters := policy.NewRateLimiterSet(compiled.RateLimits.Items)
 
 	upstreamTransport := newUpstreamTransport(&cfg.UpstreamTransport)
 
@@ -87,6 +88,7 @@ func Bootstrap(cfg *config.Runtime, manifest validate.Validated) (*Dependencies,
 		PublicHTTP: publicHTTP,
 		SystemHTTP: systemHTTP,
 		Health:     healthSvc,
+		Engine:     engine,
 	}, nil
 }
 
@@ -103,12 +105,6 @@ func newUpstreamTransport(cfg *config.UpstreamTransport) *http.Transport {
 		TLSHandshakeTimeout:   cfg.TLSHandshakeTimeout,
 		ResponseHeaderTimeout: cfg.ResponseHeaderTimeout,
 		ExpectContinueTimeout: 1 * time.Second,
-		// A gateway forwards content negotiation unchanged. Without this
-		// setting the transport adds "Accept-Encoding: gzip" to requests whose
-		// client did not send one and then transparently decodes the response,
-		// which strips Content-Encoding and Content-Length and costs a gzip
-		// reader plus a decompression buffer per response.
-		DisableCompression: true,
 		DialContext: (&net.Dialer{
 			Timeout:   cfg.DialTimeout,
 			KeepAlive: 30 * time.Second,

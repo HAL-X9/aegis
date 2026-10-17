@@ -12,8 +12,9 @@ type CompiledConfig struct {
 	// Order may define priority (first match wins depending on router implementation).
 	Routes []CompiledRoute
 
-	// Policies contains reusable compiled policy plans.
-	Policies CompiledPolicies
+	// RateLimits contains the compiled rate-limit definitions that routes
+	// select by CompiledRoutePolicies.RateLimitID.
+	RateLimits CompiledRateLimits
 
 	// HeaderNames resolves dynamic HeaderIDs assigned during compilation.
 	//

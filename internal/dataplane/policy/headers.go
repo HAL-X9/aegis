@@ -8,42 +8,21 @@ import (
 
 // resolveHeaderName maps a HeaderID back to its wire name.
 //
-// Well-known IDs are a plain branch — no allocation, no lookup. Anything
-// >= snapshot.HeaderDynamicStart is a custom header assigned during
-// compilation (see internal/controlplane/compile.HeaderRegistryBuilder)
-// and is resolved through names, the registry published alongside the
-// route it belongs to (router.Engine.HeaderNames).
+// Well-known IDs are resolved by snapshot.WellKnownHeaderName, a plain array
+// index. Anything >= snapshot.HeaderDynamicStart is a custom header assigned
+// during compilation (see internal/controlplane/compile.HeaderRegistryBuilder)
+// and is resolved through names, the registry published alongside the route it
+// belongs to (router.Engine.HeaderNames). An ID that neither resolves yields "".
 func resolveHeaderName(id snapshot.HeaderID, names *snapshot.HeaderRegistry) string {
-	switch id {
-	case snapshot.HeaderHost:
-		return "Host"
-	case snapshot.HeaderContentType:
-		return "Content-Type"
-	case snapshot.HeaderContentLength:
-		return "Content-Length"
-	case snapshot.HeaderAuthorization:
-		return "Authorization"
-	case snapshot.HeaderXForwardedFor:
-		return "X-Forwarded-For"
-	case snapshot.HeaderXForwardedProto:
-		return "X-Forwarded-Proto"
-	case snapshot.HeaderXRequestID:
-		return "X-Request-Id"
-	case snapshot.HeaderServer:
-		return "Server"
-	case snapshot.HeaderXContentTypeOptions:
-		return "X-Content-Type-Options"
-	case snapshot.HeaderXFrameOptions:
-		return "X-Frame-Options"
-	case snapshot.HeaderXXSSProtection:
-		return "X-Xss-Protection"
-	default:
-		i := int(id) - int(snapshot.HeaderDynamicStart)
-		if names == nil || i < 0 || i >= len(names.Names) {
-			return ""
-		}
-		return names.Names[i]
+	if id < snapshot.HeaderDynamicStart {
+		return snapshot.WellKnownHeaderName(id)
 	}
+
+	i := int(id) - int(snapshot.HeaderDynamicStart)
+	if names == nil || i >= len(names.Names) {
+		return ""
+	}
+	return names.Names[i]
 }
 
 // ExecuteMutations applies plan's header operations, in compiled order

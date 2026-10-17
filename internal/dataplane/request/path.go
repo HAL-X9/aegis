@@ -19,6 +19,10 @@ import (
 // '/', or it contains an encoded slash ("%2F"). The router would split on
 // such a slash while the upstream may not, so the two could disagree on
 // which resource is addressed.
+//
+// It does not yet reject other ambiguous octets ('\', ';', NUL, '%') or
+// their encoded forms: such bytes are currently routed and forwarded
+// unchanged.
 func CanonicalPath(u *url.URL) (canonical string, ok bool) {
 	p := u.Path
 	if !strings.HasPrefix(p, "/") || hasEncodedSlash(u.RawPath) {

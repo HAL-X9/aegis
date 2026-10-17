@@ -53,6 +53,10 @@ func resolveHeaderName(id snapshot.HeaderID, names *snapshot.HeaderRegistry) str
 // pass router.Engine.HeaderNames() for the snapshot the route was
 // compiled from. names may be nil if plan is known to reference only
 // well-known headers.
+//
+// Operations write h directly. For an outbound request, writing "Host" has no
+// effect, because net/http sends http.Request.Host and ignores
+// Header["Host"].
 func ExecuteMutations(h http.Header, plan *snapshot.CompiledHeadersPlan, names *snapshot.HeaderRegistry) {
 	if plan == nil || len(plan.Ops) == 0 {
 		return

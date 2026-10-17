@@ -14,8 +14,9 @@ At process startup:
 1. Routes are loaded from YAML via `internal/controlplane/loader`, which
    unmarshals with strict field checking and runs
    `internal/controlplane/validate`.
-2. `internal/controlplane/normalize` canonicalizes the validated model
-   (path prefixes, method casing, header names, policy references).
+2. `internal/controlplane/pipeline.Build` passes the validated model through
+   `internal/controlplane/normalize`, which canonicalizes it (path prefixes,
+   method casing, header names, policy references).
 3. `internal/controlplane/compile` transforms the normalized model into
    `snapshot.CompiledConfig`: a method bitmask per route
    (`internal/httpmethod`), precompiled header predicates
@@ -30,13 +31,14 @@ At process startup:
    after flattening; only the arena is retained.
 5. `router.NewEngine` wraps the compiled snapshot for request-time use. It
    performs no computation of its own.
-6. The public HTTP server handles all paths through
-   `internal/dataplane/proxy.Executor`, which calls `engine.Lookup`,
-   applies method and header predicate filtering, and proxies the request
-   to the selected upstream.
+6. `app.Bootstrap` publishes the engine, together with the rate limiters, as
+   one `proxy.View` (`Executor.Publish`). The public HTTP server hands all
+   paths to `internal/dataplane/proxy.Executor`, which canonicalizes the path,
+   calls `engine.Lookup`, applies method and header predicate filtering, and
+   proxies the request to the selected upstream.
 
-There is no hot config reload in the current implementation: the engine is
-built once during `app.Bootstrap`. Changing routes requires a process
+There is no hot config reload in the current implementation: the `View` is
+published once during `app.Bootstrap`. Changing routes requires a process
 restart.
 
 ## Roles by package (as implemented)
@@ -69,13 +71,17 @@ while the control plane builds the index; the request path never touches it.
 `internal/controlplane/compile/index_flatten.go` defines `Index`, which
 builds that tree from the compiled routes, and `flatten`, which converts it
 into `snapshot.RouteIndex`: a breadth-first traversal producing three
-contiguous slices — `Nodes []IndexNode`, `Prefixes string`, and
-`RouteRefs []RouteID` — with all cross-references expressed as slice indices.
+contiguous arrays — a node array, a single prefix string, and a route-reference
+array — with all cross-references expressed as indices. The fields of
+`RouteIndex` are unexported and the constructor copies its inputs, so nothing
+outside `internal/snapshot` can modify an index once it is built.
 
 `internal/snapshot/index.go` defines `RouteIndex` and its `Lookup`, the
-immutable structure actually queried at request time. `Lookup` walks the
-arena without allocating: candidate route IDs are returned as a sub-slice of
-`RouteRefs`, never copied.
+immutable structure actually queried at request time. `Lookup` is a visitor
+interface: it calls `visit` with each structurally matching candidate set, in
+priority order, and stops as soon as `visit` returns `true`. It walks the
+arena without allocating: each candidate set is a sub-slice of the
+route-reference array, never copied.
 
 `internal/dataplane/router/engine.go` is the façade used by the proxy:
 `NewEngine` wraps the compiled snapshot — the route index, the compiled
@@ -96,10 +102,12 @@ incoming path and query, and performs the upstream round trip.
 `snapshot.CompiledRoute` (from `compile`) is the immutable route
 definition held in `Engine.routes`, addressed by index.
 
-Runtime output of path resolution is `[]uint32` — route indices into
-`Engine.routes` — not a wrapper type and not a slice of pointers. Method
-and header disambiguation are handled by the executor after lookup, by
-resolving each candidate index via `Engine.Route`.
+Path resolution hands the visitor a `[]snapshot.RouteID` (a `uint32`
+type) — route indices into `Engine.routes` — not a wrapper type and not a
+slice of pointers. Method and header disambiguation are handled by the
+executor inside the visitor, by resolving each candidate index via
+`Engine.Route`. Because the visitor can reject a candidate set, `Lookup`
+continues with lower-priority sets (see `routing-and-errors.md` §1.4).
 
 ## Path matching behavior (implemented)
 
@@ -124,13 +132,14 @@ empty segment simply fails to match, so the router cannot route a path
 other than the one forwarded upstream.
 
 Lookup does not allocate: `RouteIndex.Lookup` walks indices into
-pre-allocated slices and returns a window into `routeRefs`. It returns
-`nil` when no branch matches.
+pre-allocated slices and passes windows into the route-reference array to
+the visitor. If no branch matches, the visitor is never called.
 
 **Overlap and ordering:** multiple routes can register candidates on the
 same trie node. The executor iterates candidates in the order recorded at
-build time (insertion order for routes sharing a terminal node) and picks
-the first candidate that satisfies both method and header predicates.
+build time (the order of routes in the manifest, for routes sharing a
+terminal node) and picks the first candidate that satisfies both method and
+header predicates.
 There is no separate global route-priority field; stable behavior for
 overlapping prefixes depends on compile-time route order.
 
@@ -169,10 +178,11 @@ and header predicates is selected and proxied.
 
 The `Engine` is created once for the process lifetime in the current app
 wiring. `RouteIndex`'s underlying slices are never mutated after
-construction, so concurrent `Lookup` calls require no synchronization. A
-future reload feature would build a new `Engine` off the request path and
-publish it via an atomic pointer swap; that pattern is not implemented
-today.
+construction, so concurrent `Lookup` calls require no synchronization. The
+`Executor` already holds its `proxy.View` behind an `atomic.Pointer`, so a
+future reload feature would build a new `Engine` and rate limiters off the
+request path and install them with a second `Executor.Publish`. Only the
+initial publication exists today.
 
 ## Design guardrails (unchanged intent)
 

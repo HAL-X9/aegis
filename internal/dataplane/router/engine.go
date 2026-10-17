@@ -45,10 +45,16 @@ func (e *Engine) Lookup(path string, visit func(candidates []snapshot.RouteID) b
 	e.index.Lookup(path, visit)
 }
 
+// Route returns the compiled route that id, an identifier offered by Lookup,
+// refers to. The result aliases the snapshot and must not be modified. id must
+// come from this Engine's own index; an arbitrary value panics.
 func (e *Engine) Route(id snapshot.RouteID) *snapshot.CompiledRoute {
 	return &e.routes[id]
 }
 
+// UpstreamURL returns the parsed upstream origin (scheme and host) of the
+// service route refers to. The result is shared by every request and must be
+// copied before it is modified.
 func (e *Engine) UpstreamURL(route *snapshot.CompiledRoute) *url.URL {
 	return e.services.Items[route.Service].Upstream
 }

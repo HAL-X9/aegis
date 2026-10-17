@@ -13,6 +13,11 @@ var forwardedHeaders = [...]string{"X-Forwarded-For", "X-Forwarded-Proto", "X-Fo
 // X-Forwarded-For, X-Forwarded-Proto and X-Forwarded-Host derived from r's
 // connection and Host, replacing any client-supplied values.
 //
+// The three headers are always replaced, never trusted, so a client cannot
+// forge its address, scheme or host as seen by the gateway. Other headers that
+// can carry the same information (Forwarded, X-Real-IP, X-Original-URL, ...)
+// are copied unchanged.
+//
 // The copy is built in one pass with a single map and a single backing
 // array for all values, including the forwarded ones.
 func UpstreamHeader(r *http.Request) http.Header {

@@ -10,8 +10,10 @@ is produced by `proxy.Executor.ServeHTTP` in `executor.go`.
 ### 1.0 The request path is canonicalized first
 
 Before routing, `request.CanonicalPath` resolves dot segments (`.`, `..`)
-and merges empty segments (`//`), per RFC 3986 §5.2.4, keeping a trailing
-slash. The canonical path is the one both routed **and** forwarded
+per RFC 3986 §5.2.4 and keeps a trailing slash. It also merges empty
+segments (`//`). RFC 3986 does not define this merge; it is an additional
+normalization (see [canonical path specification](formal/canonical_path.md), D3).
+The canonical path is the one both routed **and** forwarded
 upstream, so a request can never match one route while addressing another
 resource:
 
@@ -22,7 +24,23 @@ resource:
 
 A path containing an encoded slash (`%2F`) has no unambiguous canonical
 form — the router would split on it, an upstream may not — and is rejected
-with `400`. Already-canonical paths are used as-is, without allocating.
+with `400`.
+
+The specification further requires that a request be rejected with `400`
+when its decoded path contains an octet outside the allowed set. The
+allowed set is the RFC 3986 `pchar` set without `%` and `;`, with `/` as
+the only separator. The rejected octets therefore include `\`, `;`, `%`,
+`?`, `#`, NUL and control characters. Encoded forms that decode to them (`%5C`, `%3B`, `%25`, `%3F`,
+`%23`, `%00`) are rejected in the same way. The full rule is in
+[canonical path specification](formal/canonical_path.md), §3.
+
+**Status.** The encoded-slash rejection and the dot-segment and empty-segment
+handling are implemented. The rejection of the remaining octets listed above
+is specified but **not yet enforced** by `CanonicalPath`: a request path
+containing `\` or `;`, or one of the encoded forms, is currently routed and
+forwarded.
+
+Already-canonical paths are used as-is, without allocating.
 
 ### 1.1 `path_prefix` is a real prefix match
 
@@ -116,16 +134,16 @@ route; in the example above, `GET /users/me` is served by route B.
 for each request. This table is the contract: the code must not add, remove,
 or reorder outcomes without updating this document in the same change.
 
-| Status | Condition | Notes |
-|---|---|---|
-| **503** Service Unavailable | No compiled view has been published (`view == nil`). | Startup failure; never a per-route condition. |
-| **400** Bad Request | The request path has no canonical form: it contains an encoded slash (`%2F`) or cannot be canonicalized (see 1.0). | Checked before route matching. |
-| **405** Method Not Allowed | (a) The request method is not a supported method (see `internal/httpmethod`); or (b) the path matched at least one route, but no matching candidate supports the request method. | Case (a) is checked before route matching. Case (b) is returned only when path matching succeeded. See 3 for the status code of case (a). |
-| **404** Not Found | No route's path structure matches the request path; or a path and method matched, but no candidate's header predicates were satisfied. | See 2.1 for why an unsatisfied header predicate yields 404. |
-| **429** Too Many Requests | A route matched (path, method, and headers), but its rate-limit policy rejected the request. | Checked before the first upstream attempt. |
-| **504** Gateway Timeout | A service `timeout`, a `retries.attempt_timeout` on the last attempt, the listener `request_timeout`, or a transport dial or response-header timeout expired. | Retries are attempted first while the service `timeout` allows. |
-| **502** Bad Gateway | The upstream request failed for a reason other than a timeout. | Connection refused, connection reset, or protocol error. |
-| **200–5xx** (passthrough) | The upstream responded. | Status, headers, and body are forwarded after hop-by-hop stripping and policy mutation. A 502, 503, or 504 response is passed through once retries are exhausted. |
+| Status                      | Condition                                                                                                                                                                        | Notes                                                                                                                                                             |
+|-----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **503** Service Unavailable | No compiled view has been published (`view == nil`).                                                                                                                             | Startup failure; never a per-route condition.                                                                                                                     |
+| **400** Bad Request         | The request path has no canonical form: it contains an encoded slash (`%2F`) or does not begin with `/` (see 1.0).                                                              | Checked before route matching. Rejection of other octets is specified but not yet enforced (see 1.0).                                                             |
+| **405** Method Not Allowed  | (a) The request method is not a supported method (see `internal/httpmethod`); or (b) the path matched at least one route, but no matching candidate supports the request method. | Case (a) is checked before route matching. Case (b) is returned only when path matching succeeded. See 3 for the status code of case (a).                         |
+| **404** Not Found           | No route's path structure matches the request path; or a path and method matched, but no candidate's header predicates were satisfied.                                           | See 2.1 for why an unsatisfied header predicate yields 404.                                                                                                       |
+| **429** Too Many Requests   | A route matched (path, method, and headers), but its rate-limit policy rejected the request.                                                                                     | Checked before the first upstream attempt.                                                                                                                        |
+| **504** Gateway Timeout     | A service `timeout`, a `retries.attempt_timeout` on the last attempt, the listener `request_timeout`, or a transport dial or response-header timeout expired.                    | Retries are attempted first while the service `timeout` allows.                                                                                                   |
+| **502** Bad Gateway         | The upstream request failed for a reason other than a timeout.                                                                                                                   | Connection refused, connection reset, or protocol error.                                                                                                          |
+| **200–5xx** (passthrough)   | The upstream responded.                                                                                                                                                          | Status, headers, and body are forwarded after hop-by-hop stripping and policy mutation. A 502, 503, or 504 response is passed through once retries are exhausted. |
 
 ### 2.1 Why a header mismatch is 404, not 405
 
@@ -140,14 +158,25 @@ that resource to otherwise be visible to the caller.
 
 ### 2.2 Route label on metrics
 
+**Status: the executor side is implemented; the metrics side is not.**
+
 Every request that reaches a fully matched route (past the 503, 400, 404, and
-405 checks above) is labeled on `routelabel` with the compiled route's `Name`
-before any subsequent 429/502 can occur, so those responses are still
-attributed to the correct route in metrics. `Name` is part of
+405 checks above) is reported to `routelabel` with the compiled route's `Name`
+before any subsequent 429/502/504 can occur, so that those responses can be
+attributed to the correct route. `Name` is part of
 `snapshot.CompiledRoute`'s contract (see `docs/policies.md`,
 `routes: - name: example`) — if it is ever empty, that indicates a bug in
-the loader/compiler, not a valid state, and the executor labels it
+the loader/compiler, not a valid state, and the executor reports
 `"unnamed-route"` rather than silently emitting a blank label.
+
+The recorded value is not yet consumed. No code creates a `routelabel.Recorder`
+and attaches it to the request context (`routelabel.NewContext` has no caller),
+so `routelabel.FromContext` returns `nil` and the executor's call is a no-op.
+The metrics middleware records only the request method and the response
+status; the series `aegis_http_requests_total` and
+`aegis_http_request_duration_seconds` carry no route label. Wiring the
+recorder into the middleware is listed in the roadmap of
+[ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ## 3. Open items
 

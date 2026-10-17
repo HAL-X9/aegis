@@ -8,10 +8,15 @@ import (
 // NoRateLimit marks a route as having no rate-limit policy attached.
 const NoRateLimit = -1
 
+// RateLimiterSet holds one token-bucket limiter per compiled rate-limit
+// policy, indexed by the policy's identifier. A limiter is shared by every
+// route that references its policy and is safe for concurrent use.
 type RateLimiterSet struct {
 	limiters []*rate.Limiter
 }
 
+// NewRateLimiterSet creates a limiter for each compiled policy, in order, so
+// that a policy's index in compiled is its identifier.
 func NewRateLimiterSet(compiled []snapshot.CompiledRateLimit) *RateLimiterSet {
 	limiters := make([]*rate.Limiter, len(compiled))
 	for i, c := range compiled {

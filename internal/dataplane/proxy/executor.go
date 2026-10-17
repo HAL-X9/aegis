@@ -97,28 +97,30 @@ func newUpstreamRequest(ctx context.Context, view *View, r *http.Request, route 
 // ServeHTTP resolves the incoming request using the routing engine and
 // proxies it to a matching upstream service.
 //
-// Behavior:
-//   - returns 503 if no View has been published yet
-//   - returns 400 if the request path has no canonical form
-//     (see request.CanonicalPath); otherwise the canonical path is both
-//     routed and forwarded
-//   - returns 404 if no route matches the request path
-//   - returns 405 if no route supports the request method
-//   - returns 429 if the matched route's rate-limit policy rejects the request
-//   - returns 504 if the upstream exchange times out (see isTimeout)
-//   - returns 502 if upstream request execution fails otherwise
-//   - retries idempotent body-less requests on transport errors and
-//     502/503/504 when the route's service configures more than one attempt
-//     (see internal/dataplane/retry); the rate limiter is checked once,
-//     before the first attempt
+// Outcomes, in the order they are decided (the contract is
+// docs/routing-and-errors.md §2; change both together):
+//   - 503 if no View has been published yet
+//   - 400 if the request path has no canonical form (see
+//     request.CanonicalPath); otherwise the canonical path is both routed
+//     and forwarded (invariant I-001)
+//   - 405 if the request method is not a supported method
+//   - 404 if no route matches the path, or if some candidate allows the
+//     method but none satisfies its header predicates
+//   - 405 if candidates match the path but none allows the method
+//   - 429 if the matched route's rate-limit policy rejects the request
+//   - 504 if the upstream exchange times out (see isTimeout)
+//   - 502 if the upstream exchange fails for any other reason
+//   - otherwise the upstream response is passed through
 //
-// The request body is forwarded as-is to the upstream service.
+// Idempotent, body-less requests are retried on transport errors and on
+// 502/503/504 when the route's service configures more than one attempt (see
+// internal/dataplane/retry). The rate limiter is consulted once, before the
+// first attempt. The request body is forwarded as-is to the upstream service.
 //
-// Once a route is matched, ServeHTTP reports the route's identifier via
-// routelabel so the metrics middleware can label request metrics by route
-// instead of by raw path (see internal/dataplane/routelabel). Requests that
-// never reach a route match (503/404/405 above) are left unlabeled and
-// fall back to "unmatched" in the recorded metrics.
+// Once a route is matched, ServeHTTP reports its name via routelabel, so that
+// a later 429, 502 or 504 can still be attributed to the route. Requests that
+// never reach a route match (503, 400, 404, 405) are reported as "unmatched".
+// The report is currently discarded: see the package comment of routelabel.
 func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	view := executor.view.Load()
 	if view == nil {
@@ -133,7 +135,8 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve the bitmask representation of the incoming HTTP method.
-	// Unsupported methods are rejected explicitly.
+	// Unsupported methods are rejected before any lookup. RFC 9110 would
+	// suggest 501 here; docs/routing-and-errors.md §3 records the open item.
 	methodBit, ok := httpmethod.Bit(r.Method)
 	if !ok {
 		http.Error(w, "unsupported HTTP method", http.StatusMethodNotAllowed)
@@ -145,7 +148,8 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// tries lower-priority branches (static -> param -> wildcard, plus
 	// path_prefix fallbacks) whenever visit returns false, so a route
 	// that structurally matches but fails method/header predicates never
-	// hides a valid fallback route — see docs/routing-and-errors.md.
+	// hides a valid fallback route (invariants I-006 and I-007 in
+	// docs/invariants.md; semantics in docs/routing-and-errors.md §1.4).
 	var (
 		pathMatched   bool
 		methodMatched bool

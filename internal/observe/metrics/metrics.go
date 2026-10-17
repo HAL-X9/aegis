@@ -7,12 +7,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// Metrics holds the gateway's HTTP collectors, all in the "aegis" namespace.
+//
+// Labels are deliberately bounded: HTTPRequestTotal is labelled by method and
+// status, HTTPRequestDuration by method. There is no route or path label yet.
 type Metrics struct {
 	HTTPRequestTotal    *prometheus.CounterVec
 	HTTPRequestDuration *prometheus.HistogramVec
-	HTTPActiveRequests  prometheus.Gauge
+	// HTTPActiveRequests is registered but never updated, so it always reads 0.
+	HTTPActiveRequests prometheus.Gauge
 }
 
+// NewMetrics creates the collectors and registers them with reg. Registering
+// the same names twice with one registry panics, so call it once per registry.
 func NewMetrics(reg prometheus.Registerer) *Metrics {
 	m := &Metrics{
 		HTTPRequestTotal: prometheus.NewCounterVec(
@@ -62,6 +69,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	return m
 }
 
+// RecordHTTPRequest counts one finished request and observes its duration.
 func (m *Metrics) RecordHTTPRequest(method string, statusCode int, duration time.Duration) {
 	m.HTTPRequestTotal.WithLabelValues(method, strconv.Itoa(statusCode)).Inc()
 	m.HTTPRequestDuration.WithLabelValues(method).Observe(duration.Seconds())

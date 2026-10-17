@@ -9,7 +9,10 @@ import (
 // RFC 7230 §6.1. It must be called on both the outbound request (before
 // proxying to upstream) and the inbound response (before writing it back
 // to the client) — hop-by-hop headers are connection-scoped and must never
-// be forwarded across either hop.
+// be forwarded across either hop (invariant I-009 in docs/invariants.md).
+//
+// Besides the fixed set below, it removes every header named by a Connection
+// header value, then Connection itself.
 func RemoveHopHeaders(headers http.Header) {
 	// headers.Values("Connection") canonicalizes "Connection" on every
 	// call despite it already being canonical; read the map directly.

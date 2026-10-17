@@ -2,10 +2,18 @@
 // data-plane executor back up to the metrics middleware, without giving the
 // executor a compile-time dependency on the metrics or middleware packages.
 //
-// This is the "context-carried recorder" referenced in ARCHITECTURE.md's
-// roadmap section for metrics middleware: route-pattern labeling must come
-// from raw request paths (unbounded cardinality — every :id becomes its own
-// series) to avoid unbounded Prometheus label cardinality.
+// The identifier is the route's configured name, never the raw request path:
+// labelling by path would give every distinct ":id" its own Prometheus
+// series, so label cardinality would be unbounded. Requests that match no
+// route are reported as "unmatched", which keeps the label set bounded.
+//
+// Status: only the executor half is wired. The executor calls
+// SetRoutePattern, but nothing creates a Recorder or attaches it with
+// NewContext, and the metrics middleware does not read one, so the value is
+// currently discarded (see "Roadmap / known limitations" in ARCHITECTURE.md).
+// The intended design is for the metrics middleware to take a pooled Recorder,
+// attach it to the request context, and read RoutePattern after the handler
+// returns.
 package routelabel
 
 import "context"

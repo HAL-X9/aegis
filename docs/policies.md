@@ -85,9 +85,11 @@ Within one operation group, execution order is fixed:
 This order is enforced both at compile time (`compileHeaderOps` emits
 instructions in this sequence) and at runtime
 (`ExecuteMutations` executes the compiled instruction list in the order
-it was compiled, without re-sorting). It guarantees deterministic
-behavior and prevents `add` from reintroducing a header the same policy
-just removed.
+it was compiled, without re-sorting). It makes the compiled plan
+deterministic. Because validation forbids a header from belonging to more
+than one operation group in a direction, the order does not change the
+outcome of a validated configuration; it is retained as a safeguard for
+any plan that bypasses validation.
 
 ### Validation Requirements
 
@@ -95,6 +97,8 @@ The control plane rejects invalid policies in the `validate` stage, before
 compilation:
 
 - Header names in `add`, `set`, and `remove` must be valid HTTP field names.
+- Within one policy, a header may appear in only one operation group
+  (`add`, `set`, or `remove`) per direction, and only once within that group.
 - When a route references more than one headers policy, no header may be
   changed by two of them within the same direction (`request` or
   `response`). A policy referenced twice by the same route conflicts with
@@ -129,11 +133,26 @@ policies:
 
 Header-policy execution and hop-by-hop header removal
 (`internal/dataplane/request.RemoveHopHeaders`) are independent stages
-applied on both the request and response path. `RemoveHopHeaders` runs after the policy mutations on both paths: before the upstream call on the request side, and before the upstream response headers are copied to the client on the response side; a headers policy
-must not be relied upon to strip connection-scoped headers
-(`Connection`, `Transfer-Encoding`, `Keep-Alive`, and related headers) —
-that is `RemoveHopHeaders`'s responsibility regardless of policy
-configuration.
+applied on both the request path and the response path. On each path,
+`RemoveHopHeaders` runs after the policy mutations: on the request side,
+before the upstream call; on the response side, before the upstream
+response headers are copied to the client. Consequently a headers policy
+cannot cause a connection-scoped header to be forwarded, and must not be
+relied upon to strip one (`Connection`, `Transfer-Encoding`, `Keep-Alive`,
+and related headers); that is the responsibility of `RemoveHopHeaders`,
+regardless of policy configuration.
+
+The request-side `X-Forwarded-For`, `X-Forwarded-Proto`, and
+`X-Forwarded-Host` headers are derived from the connection by
+`request.UpstreamHeader` before the policy runs, so a request policy may
+override or remove them.
+
+## Limitations
+
+- **`Host`.** A `set` or `add` of `Host` in a request policy writes
+  `Header["Host"]` of the outbound request, which `net/http` ignores when
+  sending it: the upstream receives the host of the service's `upstream`.
+  The operation is accepted by validation and has no effect.
 
 ## Notes
 

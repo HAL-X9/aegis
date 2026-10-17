@@ -4,10 +4,10 @@
 
 Aegis is split into two planes with a hard boundary between them:
 
-- **Control plane** — loads YAML configuration, validates it, normalizes it, and compiles it into an immutable snapshot. This runs at startup (and on reload), never on the request path.
+- **Control plane** — loads YAML configuration, validates it, normalizes it, and compiles it into an immutable snapshot. This runs once at startup and never on the request path; configuration reload is not supported.
 - **Data plane** — serves live HTTP traffic against the compiled snapshot: route lookup, method/header matching, policy mutation, and proxying to upstream services.
 
-The boundary exists so the hot path never re-derives behavior from raw configuration. Every request touches only precompiled, read-only structures — no YAML parsing, no validation, no config-shaped branching at request time.
+The boundary exists so the hot path never re-derives behavior from raw configuration. Every request consults only precompiled, read-only structures — no YAML parsing, no validation, no config-shaped branching at request time. This is a statement about configuration, not about memory: route lookup is allocation-free, whereas building the outbound request allocates (see "Key design decisions").
 
 ```mermaid
 %%{init: {'theme':'base'}}%%
@@ -38,20 +38,22 @@ flowchart TB
     SNAP -->|published once at startup| ENGINE
     ENGINE -->|Lookup| EXEC
 
-    classDef default fill:#e5f3ff,stroke:#e0e1e2,color:#22559b;
-    style CP fill:#ffffff,stroke:#e0e1e2
-    style DP fill:#ffffff,stroke:#e0e1e2
+    classDef default fill:#e5f3ff,stroke:none,color:#22559b;
+    style CP fill:#ffffff,stroke:none
+    style DP fill:#ffffff,stroke:none
 ```
 
 ## Request lifecycle
 
 1. `edge/public` accepts the connection and forwards to the data plane's compiled `http.Handler`.
 2. The middleware chain runs outermost first: **timeout**, **metrics**, and **request ID** (metrics and request ID can each be switched off with the `middleware` section of the runtime config; both are on by default). Request ID keeps a well-formed client `X-Request-ID` or generates a UUIDv7 and echoes it in the response. The route handler forwards the request to the executor. Panic recovery is not yet part of the chain (see Roadmap).
-3. `proxy.Executor` looks up the request path in the route index (`router.Engine.Lookup` over `snapshot.RouteIndex`), producing all route candidates that share that path.
-4. Candidates are filtered by HTTP method using a precomputed bitmask (`internal/httpmethod`) and by header predicates (`router.HeadersMatch`). The first candidate satisfying both wins.
-5. `policy.ExecuteMutations` applies configured header mutations to the outbound request, then hop-by-hop headers are stripped (`request.RemoveHopHeaders`).
-6. The request is forwarded via the configured `http.RoundTripper`. On success, response headers are copied back, response-side policy mutations are applied, and the body is streamed to the client with `io.Copy`.
-7. Failure modes are explicit. Every status code the executor can return, and the condition that produces it, is listed in [docs/routing-and-errors.md](docs/routing-and-errors.md) §2.
+3. `proxy.Executor` loads the published `View` (answering `503` if none exists), canonicalizes the request path with `request.CanonicalPath` (answering `400` if it has no canonical form), and rejects methods outside the supported set with `405`. The canonical path is the one both routed and forwarded.
+4. The executor looks the path up in the route index (`router.Engine.Lookup` over `snapshot.RouteIndex`). Lookup offers candidate sets in priority order (static, parameter, wildcard, then `path_prefix` fallbacks). Candidates are filtered by HTTP method using a precomputed bitmask (`internal/httpmethod`) and by header predicates (`router.HeadersMatch`). The first candidate satisfying both wins; if none does, the response is `404` or `405`.
+5. The matched route's rate limiter is consulted once (`policy.RateLimiterSet.Allow`); a rejected request is answered `429` before any upstream attempt. The route's service `timeout`, if configured, then bounds the remainder of the exchange.
+6. `request.UpstreamHeader` builds the outbound header, replacing the `X-Forwarded-*` headers with values derived from the connection. `policy.ExecuteMutations` applies the route's request-side header operations, and hop-by-hop headers are then stripped (`request.RemoveHopHeaders`).
+7. `retry.Do` sends the request through the configured `http.RoundTripper`, repeating idempotent, body-less requests after transient failures when the service configures more than one attempt.
+8. On success, response-side policy mutations are applied, hop-by-hop headers are stripped, the headers are copied to the client, and the body is streamed with `io.CopyBuffer` using a pooled buffer. A failure to obtain a response is answered `504` for a timeout and `502` otherwise.
+9. Failure modes are explicit. Every status code the executor can return, and the condition that produces it, is listed in [docs/routing-and-errors.md](docs/routing-and-errors.md) §2.
 
 The sequence below traces one request end to end, including where the atomically published `View` is read and which component performs each mutation.
 
@@ -64,6 +66,7 @@ sequenceDiagram
     participant X as proxy.Executor
     participant V as View
     participant R as RouteIndex / Router
+    participant L as RateLimiterSet
     participant P as Policies
     participant T as http.Transport
     participant U as Upstream
@@ -77,7 +80,9 @@ sequenceDiagram
     X->>V: atomic.Load()
     V-->>X: generation N
 
-    X->>R: Lookup(path)
+    X->>X: CanonicalPath(URL)
+
+    X->>R: Lookup(canonical path)
     R-->>X: route candidates
 
     X->>X: MethodMask match
@@ -87,11 +92,14 @@ sequenceDiagram
     X->>V: Route + Service + Policies
     V-->>X: compiled runtime state
 
+    X->>L: Allow(route)
+    L-->>X: permitted
+
     X->>P: request mutations
     P-->>X: mutated headers
 
     X->>X: strip hop-by-hop headers
-    X->>T: RoundTrip(outbound request)
+    X->>T: RoundTrip (retry.Do)
 
     T->>U: HTTP request
     U-->>T: HTTP response
@@ -107,7 +115,7 @@ sequenceDiagram
 
 ## Key design decisions
 
-**Radix trie routing, not a map.** Route lookup uses a compressed radix trie supporting static, `:param`, and `*wildcard` segments, matched with static > param > wildcard priority. Lookups perform **zero allocations** across 16 to 32,768 routes, and the tree stays shallow because of prefix compression, so lookup cost grows with path depth, not route count. Insertion (setup-time only) favors correctness over allocation avoidance; lookup (request-time) is optimized for zero allocations, since it runs on every request.
+**Radix trie routing, not a map.** Route lookup uses a compressed radix trie supporting static, `:param`, and `*wildcard` segments, matched with static > param > wildcard priority. The router benchmarks report **0 allocations per lookup** from 16 to 32,768 routes, and the tree stays shallow because of prefix compression, so lookup cost is governed chiefly by path depth and grows only slowly with route count. Insertion (setup-time only) favors correctness over allocation avoidance; lookup (request-time) is optimized for zero allocations, since it runs on every request. The guarantee covers `Lookup` only: the executor as a whole still allocates per request, for the outbound request, its header copy, and the retry and timeout contexts.
 
 **Method matching via bitmask, not string comparison.** `internal/httpmethod` maps each HTTP method to a bit; route admission is a single `AND` against a precomputed mask instead of iterating and string-comparing allowed methods per request.
 
@@ -117,7 +125,21 @@ sequenceDiagram
 
 **Request ID: accepted when well-formed, otherwise a UUIDv7.** A client-supplied `X-Request-ID` is kept only when it is a single value of 1–128 visible ASCII characters, so a caller's ID can be followed end to end while spaces and control characters — the log-injection vector — never get through. Anything else is replaced with a UUIDv7, which is time-ordered and sorts naturally in logs, unlike UUIDv4. The ID is written into the request headers, which is how it reaches the upstream and later handlers without a `context.Context` allocation, and is echoed in the response.
 
-**Separate system and public listeners.** Health and metrics are served on a distinct port (`:18080`) from user traffic (`:8080`), so operational endpoints are never reachable through the same routing/policy path as untrusted traffic.
+**Atomically published `View`.** The routing engine and the rate limiters are bundled into one `proxy.View` and installed with a single `Executor.Publish`. A request loads the pointer once, so it observes exactly one generation of both. The `http.RoundTripper` is deliberately outside the `View`, because its connection pool must outlive any configuration. Only the initial publication exists today; the boundary is what allows reload to be added without redesigning the executor.
+
+**Canonical path is the routing key and the forwarding key.** `request.CanonicalPath` resolves dot segments and merges empty segments, and the result is both matched against the index and sent upstream. A request therefore cannot be authorized by one route while addressing another resource.
+
+**Separate system and public listeners.** Health and metrics are served on a distinct port (`:18080`) from user traffic (`:8080`), so operational endpoints are never reachable through the same routing/policy path as untrusted traffic. The shipped `configs/aegis.yaml` binds the system listener to `0.0.0.0`; production deployments should bind it to an internal interface (see [docs/runtime-configuration.md](docs/runtime-configuration.md) §4.3).
+
+## Process lifecycle
+
+`cmd/main.go` installs a signal context (`SIGINT`, `SIGTERM`) and calls `app.New` followed by `App.Run`.
+
+1. **Construction (`app.New`).** Flags are parsed into a private `FlagSet`; each configuration path is resolved from its flag or environment variable. The runtime configuration is decoded over `config.DefaultRuntime()` and validated, and the routes manifest is loaded and validated by `controlplane/loader`. `Bootstrap` then compiles the manifest (`pipeline.Build`), builds the `router.Engine` and the rate limiters, creates the upstream transport, publishes the first `View`, and constructs both HTTP servers. No socket is opened at this stage; any error aborts startup.
+2. **Serving (`App.Run`).** `Lifecycle` starts the public and system listeners under one `errgroup`. A failure of either listener, or cancellation of the signal context, triggers the single shutdown path.
+3. **Shutdown.** `/readyz` starts answering `503`, then both listeners are shut down in parallel, each bounded by a fixed 15 s `shutdownTimeout`. In-flight requests are drained within that bound; when it elapses, the remaining connections are closed forcibly and `Run` returns an error. The timeout is a constant, not a configuration field. A clean, signal-driven shutdown returns `nil`.
+
+The readiness flip and the listener shutdown happen back to back, with no grace period in between: a load balancer that polls `/readyz` only learns of the shutdown after the listeners have begun to close.
 
 ## Package layout
 
@@ -133,8 +155,8 @@ sequenceDiagram
 | `internal/dataplane/policy` | Header mutation execution and rate limiting |
 | `internal/dataplane/request` | Path canonicalization and hop-by-hop header handling |
 | `internal/dataplane/retry` | Retries of idempotent upstream requests |
-| `internal/dataplane/routelabel` | Route label carried from the executor to the metrics middleware |
-| `internal/dataplane/middleware` | Request ID, metrics, and timeout middleware |
+| `internal/dataplane/routelabel` | Context-carried recorder for the matched route's name. The executor writes to it; nothing creates or reads it yet (see Roadmap) |
+| `internal/dataplane/middleware` | Request ID, metrics (method and status), and request-timeout middleware |
 | `internal/edge` | Listener-facing HTTP servers: public traffic and admin endpoints |
 | `internal/observe` | Health checks and Prometheus metrics registration |
 
@@ -150,7 +172,7 @@ The layering is enforced by the `depguard` linter, configured in [.golangci.yml]
 | `observe` | `prometheus/client_golang` | other internal packages |
 | `controlplane` | `snapshot`, `httpmethod`, its own subpackages | `dataplane`, `edge`, `observe`, `app`, and `config` |
 | `dataplane` | `snapshot`, `httpmethod`, its own subpackages | `controlplane`, `edge`, `config`, `observe`, `app` |
-| `edge` | `observe`, standard library | `controlplane`, `dataplane` internals, `app` |
+| `edge` | `observe`, standard library; transitionally `config` and `dataplane/middleware` (see below) | `controlplane`, other `dataplane` packages, `app` |
 | `app` | everything (composition root) | — |
 
 Nothing under `internal/` may import `internal/app`; only `cmd` and tests outside `internal/` do.
@@ -175,7 +197,15 @@ This is a pre-1.0 project. The following items are not implemented; they are def
 - **gRPC upstreams.** Not supported; the executor proxies HTTP only.
 - **Configuration reload.** Not supported; changing routes requires a restart (see [docs/routing.md](docs/routing.md)).
 
-Request timeouts, request IDs, and metrics with route labels are implemented and wired into the public server.
+The following gaps are narrower than the items above but equally real. Each is a defect or an incomplete feature in the current code, not a design decision:
+
+- **Route-labelled metrics.** `aegis_http_requests_total` carries only `method` and `status`, and `aegis_http_request_duration_seconds` only `method`. The executor reports the matched route to `routelabel`, but no code creates a recorder (`routelabel.NewContext` has no caller) and the metrics middleware does not read one. The wiring described in `routing-and-errors.md` §2.2 is therefore inert.
+- **Active-request gauge.** `aegis_http_active_requests` is registered but never incremented or decremented, so it always reads `0`.
+- **Logging configuration.** `observability.logging` is validated but not applied; the process logs through the standard `log` package.
+- **Trusted proxies.** `proxy.trusted_proxies` is decoded but unused; `X-Forwarded-For` is always replaced with the connection address.
+- **Header policy on `Host`.** A `set` or `add` of `Host` in a request policy writes `Header["Host"]`, which `net/http` ignores when sending a request.
+
+Request timeouts and request IDs are implemented and wired into the public server. Metrics are implemented without route labels, as described above.
 
 The diagram below places these items against the implemented pipeline.
 
@@ -204,16 +234,18 @@ flowchart TB
         OT["Distributed tracing"]
         GRPC["gRPC upstreams"]
         RELOAD["Config reload"]
+        LABELS["Route-labelled metrics"]
     end
 
     E -.-> R
     E -.-> OT
     E -.-> GRPC
     C -.-> RELOAD
+    E -.-> LABELS
 
-    classDef default fill:#e5f3ff,stroke:#e0e1e2,color:#22559b;
-    style CURRENT fill:#ffffff,stroke:#e0e1e2
-    style PLANNED fill:#ffffff,stroke:#e0e1e2
+    classDef default fill:#e5f3ff,stroke:none,color:#22559b;
+    style CURRENT fill:#ffffff,stroke:none
+    style PLANNED fill:#ffffff,stroke:none
 ```
 
 Config schemas and public interfaces may change before an initial stable release.

@@ -73,6 +73,9 @@ type Listeners struct {
 	System HTTP `yaml:"system"`
 }
 
+// Proxy configures forwarding behavior. It is reserved: TrustedProxies is
+// decoded but not read, and X-Forwarded-For is always derived from the
+// connection address (see docs/runtime-configuration.md, Section 6.1).
 type Proxy struct {
 	TrustedProxies []string `yaml:"trusted_proxies"`
 }

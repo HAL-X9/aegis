@@ -152,16 +152,16 @@ Both listeners share the same schema. Validation is performed by `validateHTTP` 
 
 **Table 2.** HTTP listener fields.
 
-| Field | Type | Value when omitted | Validation at load time | Semantics |
-|---|---|---|---|---|
-| `addr` | string, `host:port` | not permitted | `net.SplitHostPort` | The address passed to `net.Listen`. An empty host is permitted (`":8080"`) and denotes all interfaces. |
-| `tls` | object | plain HTTP | when present, `cert_file` and `key_file` are required | Enables HTTPS (Section 4.4). |
-| `timeouts.read_timeout` | duration | `10s` public, `5s` system | at least 1 ms | Bounds the reading of the entire request, including the body. |
-| `timeouts.read_header_timeout` | duration | `5s` public, `2s` system | not greater than `read_timeout` | Bounds the reading of request headers. |
-| `timeouts.write_timeout` | duration | `30s` public, `10s` system | not negative | Bounds the writing of the response. |
-| `timeouts.idle_timeout` | duration | `120s` public, `30s` system | not validated | Bounds the wait for the next request on a keep-alive connection. |
-| `timeouts.request_timeout` | duration | `30s` (public) | not validated | Deadline for the processing of a request in middleware. Applies to the public listener only (Section 4.2). |
-| `max_header_bytes` | integer | 1 MiB public, 256 KiB system | not negative | Maximum size of the request headers. |
+| Field                          | Type                | Value when omitted           | Validation at load time                               | Semantics                                                                                                  |
+|--------------------------------|---------------------|------------------------------|-------------------------------------------------------|------------------------------------------------------------------------------------------------------------|
+| `addr`                         | string, `host:port` | not permitted                | `net.SplitHostPort`                                   | The address passed to `net.Listen`. An empty host is permitted (`":8080"`) and denotes all interfaces.     |
+| `tls`                          | object              | plain HTTP                   | when present, `cert_file` and `key_file` are required | Enables HTTPS (Section 4.4).                                                                               |
+| `timeouts.read_timeout`        | duration            | `10s` public, `5s` system    | at least 1 ms                                         | Bounds the reading of the entire request, including the body.                                              |
+| `timeouts.read_header_timeout` | duration            | `5s` public, `2s` system     | not greater than `read_timeout`                       | Bounds the reading of request headers.                                                                     |
+| `timeouts.write_timeout`       | duration            | `30s` public, `10s` system   | not negative                                          | Bounds the writing of the response.                                                                        |
+| `timeouts.idle_timeout`        | duration            | `120s` public, `30s` system  | not validated                                         | Bounds the wait for the next request on a keep-alive connection.                                           |
+| `timeouts.request_timeout`     | duration            | `30s` (public)               | not validated                                         | Deadline for the processing of a request in middleware. Applies to the public listener only (Section 4.2). |
+| `max_header_bytes`             | integer             | 1 MiB public, 256 KiB system | not negative                                          | Maximum size of the request headers.                                                                       |
 
 The field `addr` is the only one without a default. An explicit zero `read_timeout` is rejected by validation. The field `read_header_timeout` MUST NOT exceed `read_timeout`; since both have defaults, overriding `read_timeout` alone to a value below the default `read_header_timeout` is rejected, and the two should be set together. An explicit `0` in the other timeout fields keeps its `net/http` meaning, given in the table as the behavior of a zero value.
 
@@ -178,14 +178,14 @@ The two optional layers are switched by the top-level section `middleware`:
 
 **Table 2a.** Fields of `middleware`.
 
-| Field | Type | Value when omitted | Effect of `false` |
-|---|---|---|---|
-| `metrics` | bool | `true` | The `metrics` layer is not installed and the HTTP metrics collector is neither created nor registered, so no `aegis_http_*` series exist. The endpoint `GET /metrics` of the system listener (Section 4.3) is not affected. |
-| `request_id` | bool | `true` | The `request_id` layer is not installed: no ID is generated, a client-supplied `X-Request-Id` is forwarded to the upstream unchecked, and the header is not echoed in the response. |
+| Field        | Type | Value when omitted | Effect of `false`                                                                                                                                                                                                           |
+|--------------|------|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `metrics`    | bool | `true`             | The `metrics` layer is not installed and the HTTP metrics collector is neither created nor registered, so no `aegis_http_*` series exist. The endpoint `GET /metrics` of the system listener (Section 4.3) is not affected. |
+| `request_id` | bool | `true`             | The `request_id` layer is not installed: no ID is generated, a client-supplied `X-Request-Id` is forwarded to the upstream unchecked, and the header is not echoed in the response.                                         |
 
 The whole section, or either key, may be omitted; an omitted setting is enabled. The section applies to the public listener only: the system listener has no middleware. The order of the layers is fixed and is not configurable; the timeout is controlled by `request_timeout` and has no switch here. An unknown key under `middleware` is rejected at load time like any other unknown field.
 
-The field `request_timeout` specifies the upper bound on the processing time of a single request, including retries to the upstream. When it expires, the client receives `504 Gateway Timeout`. The default is 30 s. A value of 0, or a negative value, disables the bound ([timeout.go](../internal/dataplane/middleware/timeout.go)).
+The field `request_timeout` specifies the upper bound on the processing time of a single request, including retries to the upstream. It is implemented as a context deadline on the request. When it expires before the upstream has responded, the client receives `504 Gateway Timeout`. Once the response headers have been sent the status can no longer change, and an expiry while the body is streaming truncates the response. The default is 30 s. A value of 0, or a negative value, disables the bound ([timeout.go](../internal/dataplane/middleware/timeout.go)).
 
 The service timeout (`timeout` in the routing manifest; see [configuration.md](configuration.md#timeouts-and-retries)) and `request_timeout` apply concurrently: the deadline that expires first determines the outcome. Validation does not relate the two values. If `request_timeout` is shorter than the service timeout, the service timeout is never reached, because the request terminates earlier.
 
@@ -235,7 +235,7 @@ This section parameterizes the `http.Transport` through which `proxy.Executor` p
 | `response_header_timeout` | duration | no limit      | not validated                                                      | Time to wait for response headers after the request is sent. When it expires, the client receives `504`.                                                                                                                   |
 | `idle_conn_timeout`       | duration | no limit      | not validated                                                      | Lifetime of an idle connection in the pool.                                                                                                                                                                                |
 
-Four parameters are fixed in the implementation and cannot be configured:
+Three parameters are fixed in the implementation and cannot be configured:
 
 - `ExpectContinueTimeout`: 1 s;
 - `KeepAlive` for connection establishment: 30 s;
@@ -360,25 +360,25 @@ Table 5 records the status of each field. It is intended as a reference for veri
 
 **Table 5.** Status of runtime configuration fields.
 
-| Field | Validated | Applied | Status |
-|---|---|---|---|
-| `listeners.{public,system}.addr` | yes | yes | active |
-| `listeners.{public,system}.tls` | presence of fields | yes, at initialization | active |
-| `listeners.{public,system}.timeouts.read_timeout` | yes | yes | active |
-| `listeners.{public,system}.timeouts.read_header_timeout` | yes | yes | active |
-| `listeners.{public,system}.timeouts.write_timeout` | yes | yes | active |
-| `listeners.{public,system}.timeouts.idle_timeout` | no | yes | active |
-| `listeners.public.timeouts.request_timeout` | no | yes (middleware) | active for the public listener only |
-| `listeners.system.timeouts.request_timeout` | no | no | **ignored** |
-| `listeners.{public,system}.max_header_bytes` | yes | yes | active |
-| `upstream_transport.*` | partially (Section 5) | yes | active |
-| `middleware.metrics` | n/a (boolean) | yes | active; default `true` |
-| `middleware.request_id` | n/a (boolean) | yes | active; default `true` |
-| `proxy.trusted_proxies` | no | no | **reserved** |
-| `observability.logging.level` | yes | no | **reserved** |
-| `observability.logging.format` | yes | no | **reserved** |
-| `observability.tracing.enabled` | no | no | **reserved** |
-| `observability.tracing.endpoint` | no | no | **reserved** |
+| Field                                                    | Validated             | Applied                | Status                              |
+|----------------------------------------------------------|-----------------------|------------------------|-------------------------------------|
+| `listeners.{public,system}.addr`                         | yes                   | yes                    | active                              |
+| `listeners.{public,system}.tls`                          | presence of fields    | yes, at initialization | active                              |
+| `listeners.{public,system}.timeouts.read_timeout`        | yes                   | yes                    | active                              |
+| `listeners.{public,system}.timeouts.read_header_timeout` | yes                   | yes                    | active                              |
+| `listeners.{public,system}.timeouts.write_timeout`       | yes                   | yes                    | active                              |
+| `listeners.{public,system}.timeouts.idle_timeout`        | no                    | yes                    | active                              |
+| `listeners.public.timeouts.request_timeout`              | no                    | yes (middleware)       | active for the public listener only |
+| `listeners.system.timeouts.request_timeout`              | no                    | no                     | **ignored**                         |
+| `listeners.{public,system}.max_header_bytes`             | yes                   | yes                    | active                              |
+| `upstream_transport.*`                                   | partially (Section 5) | yes                    | active                              |
+| `middleware.metrics`                                     | n/a (boolean)         | yes                    | active; default `true`              |
+| `middleware.request_id`                                  | n/a (boolean)         | yes                    | active; default `true`              |
+| `proxy.trusted_proxies`                                  | no                    | no                     | **reserved**                        |
+| `observability.logging.level`                            | yes                   | no                     | **reserved**                        |
+| `observability.logging.format`                           | yes                   | no                     | **reserved**                        |
+| `observability.tracing.enabled`                          | no                    | no                     | **reserved**                        |
+| `observability.tracing.endpoint`                         | no                    | no                     | **reserved**                        |
 
 The field `listeners.system.timeouts.request_timeout` exists in the type because the `Timeouts` structure is shared by both listeners. Its presence in the system section has no effect.
 
@@ -401,6 +401,6 @@ The field `listeners.system.timeouts.request_timeout` exists in the type because
 | Path resolution and loading     | this document, Section 2                                  | [resolve.go](../internal/config/resolve.go), [app.go](../internal/app/app.go)          |
 | Types and validation            | this document, Sections 4 to 6                            | [types.go](../internal/config/types.go), [validate.go](../internal/config/validate.go) |
 | TLS                             | Section 4.4                                               | [tls.go](../internal/config/tls.go)                                                    |
-| Lifecycle and shutdown          | [ARCHITECTURE.md](../ARCHITECTURE.md)                     | [lifecycle.go](../internal/app/lifecycle.go)                                           |
+| Lifecycle and shutdown          | [ARCHITECTURE.md](../ARCHITECTURE.md#process-lifecycle)   | [lifecycle.go](../internal/app/lifecycle.go)                                           |
 | Service timeouts and retries    | [configuration.md](configuration.md#timeouts-and-retries) | [retry.go](../internal/dataplane/retry/retry.go)                                       |
 | Routing errors and status codes | [routing-and-errors.md](routing-and-errors.md)            | [executor.go](../internal/dataplane/proxy/executor.go)                                 |

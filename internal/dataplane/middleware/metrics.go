@@ -8,6 +8,8 @@ import (
 	"github.com/HAL-X9/aegis/internal/observe/metrics"
 )
 
+// statusRecorder remembers the first status code written to the response. A
+// handler that never calls WriteHeader is reported as 200, matching net/http.
 type statusRecorder struct {
 	http.ResponseWriter
 	status      int
@@ -29,16 +31,21 @@ var recorderPool = sync.Pool{
 	},
 }
 
+// MetricsMiddleware records the method, final status and duration of each
+// request. It does not label by route: see the routelabel package comment.
 type MetricsMiddleware struct {
 	metrics *metrics.Metrics
 }
 
+// NewMetricsMiddleware returns a middleware that records into m, which must
+// not be nil.
 func NewMetricsMiddleware(m *metrics.Metrics) *MetricsMiddleware {
 	return &MetricsMiddleware{
 		metrics: m,
 	}
 }
 
+// Metrics wraps next, recording each request after next returns.
 func (m *MetricsMiddleware) Metrics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec := recorderPool.Get().(*statusRecorder)

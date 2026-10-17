@@ -19,6 +19,7 @@ func NewForwardHandler(executor RequestExecutor) *ForwardHandler {
 	}
 }
 
+// ServeHTTP hands the request to the executor unchanged.
 func (h *ForwardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.executor.ServeHTTP(w, r)
 }

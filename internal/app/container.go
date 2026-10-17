@@ -109,6 +109,7 @@ func newUpstreamTransport(cfg *config.UpstreamTransport) *http.Transport {
 			Timeout:   cfg.DialTimeout,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
-		ForceAttemptHTTP2: true,
+		DisableCompression: true,
+		ForceAttemptHTTP2:  true,
 	}
 }

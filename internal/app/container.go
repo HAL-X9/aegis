@@ -103,6 +103,12 @@ func newUpstreamTransport(cfg *config.UpstreamTransport) *http.Transport {
 		TLSHandshakeTimeout:   cfg.TLSHandshakeTimeout,
 		ResponseHeaderTimeout: cfg.ResponseHeaderTimeout,
 		ExpectContinueTimeout: 1 * time.Second,
+		// A gateway forwards content negotiation unchanged. Without this
+		// setting the transport adds "Accept-Encoding: gzip" to requests whose
+		// client did not send one and then transparently decodes the response,
+		// which strips Content-Encoding and Content-Length and costs a gzip
+		// reader plus a decompression buffer per response.
+		DisableCompression: true,
 		DialContext: (&net.Dialer{
 			Timeout:   cfg.DialTimeout,
 			KeepAlive: 30 * time.Second,

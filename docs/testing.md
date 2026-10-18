@@ -57,7 +57,7 @@ The tests are organized in three layers, supplemented by fuzz targets and benchm
 | Fuzz        | `internal/**/*_test.go` (`Fuzz*`)      | properties of path handling and routing on generated input (Section 4.2) | 5 targets     |
 | Benchmarks  | `internal/**/*_test.go` (`Benchmark*`) | the cost of the hot path (Section 7)                                     | 17 benchmarks |
 
-The total number of `Test*` functions is 108. Subtests created with `t.Run` are not included in these figures. Each fuzz target also runs as an ordinary test over its seed corpus when `go test` is invoked.
+The total number of `Test*` functions is 134. Subtests created with `t.Run` are not included in these figures. Each fuzz target also runs as an ordinary test over its seed corpus when `go test` is invoked.
 
 The integration and end-to-end tests require no external services. The end-to-end tests host the upstream stand-in in memory through `httptest` and use no fixed ports. Containers, Docker Compose, and the `mock/` directory are not required for the tests.
 
@@ -82,9 +82,11 @@ Unit tests reside alongside the code they verify and may reference unexported id
 | `internal/snapshot`              | 3     | —          | the single table of well-known header IDs: every ID is named once in canonical form, and name-to-ID and ID-to-name lookups agree |
 | `internal/edge/tlsconfig`        | 3     | —          | building the listener TLS configuration: plain HTTP for a nil section, a valid pair, and the failures for a missing file or a mismatched key |
 | `internal/yamlx`                 | 4     | —          | strict decoding: an unknown key, a missing file, and defaults kept around keys that are present |
-| `internal/config`                | 5     | —          | loading on top of `DefaultRuntime`: a minimal document yields the defaults, explicit values (including a zero) override them, the `middleware` switches, rejection of an unknown key, and the required listen addresses |
+| `internal/config`                | 9     | —          | loading on top of `DefaultRuntime`: a minimal document yields the defaults, explicit values (including a zero) override them, the `middleware` switches, rejection of an unknown key, and the required listen addresses; every rule of `Validate` with a failing case |
+| `internal/edge/admin`            | 4     | —          | system endpoints: `/livez`, `/readyz` (including the switch to 503 at shutdown), delegation of `/metrics`, and rejection of non-GET methods |
+| `internal/app`                   | 3     | —          | `Lifecycle`: rejection of missing servers, stopping both listeners on context cancellation, and failure of the whole process when one listener cannot bind |
 | `internal/edge/public`           | 2     | —          | composition of the public middleware chain for each combination of the `middleware` switches                                                                                                                            |
-| `internal/dataplane/middleware`  | 5     | 1          | `X-Request-Id`: acceptance of a valid value, replacement of an invalid one, and absence of allocations                                                                                                                  |
+| `internal/dataplane/middleware`  | 8     | 1          | `X-Request-Id`: acceptance of a valid value, replacement of an invalid one, and absence of allocations; the metrics middleware: recorded method and status, and reset of the pooled recorder                                                                                                                  |
 | `internal/httpmethod`            | 2     | —          | parsing of methods and bitmasks                                                                                                                                                                                         |
 
 The counts in Table 3 are the numbers of `Test*` and `Benchmark*` functions; fuzz targets are listed separately in Section 4.2. Packages without unit tests are listed in Section 9.
@@ -276,7 +278,7 @@ The values were obtained by summing the blocks of the coverage profile per direc
 | `internal/controlplane/normalize` | 70.9 %   | exercised only through the end-to-end tests |
 | `internal/dataplane/policy`       | 70.7 %   |                                             |
 | `internal/edge/admin`             | 67.6 %   |                                             |
-| `internal/config`                 | 53.8 %   | no tests of its own (Section 9.2)           |
+| `internal/config`                 | 53.8 %   | measured before `validate_test.go` was added (Section 9.2) |
 | `internal/observe/health`         | 33.3 %   |                                             |
 | `internal/dataplane/routelabel`   | 40.0 %   |                                             |
 | `internal/app`                    | 28.2 %   |                                             |
@@ -288,11 +290,11 @@ The aggregate coverage across `internal/...` is approximately 85 %. This figure 
 The following areas are insufficiently tested to support confident modification. They are listed in order of decreasing risk.
 
 1. **`internal/dataplane/routelabel` and the metrics integration.** The package `routelabel` is invoked from `Executor`, but no context carrying a recorder is ever created (`routelabel.NewContext` has no caller), and the metrics layer does not read the value. Route-based labeling is therefore not operational. The gauge `aegis_http_active_requests` is likewise registered but never updated. No test detects either defect, because the end-to-end tests do not inspect metric series. A test that reads `/metrics` and asserts the route label and the gauge would expose both.
-2. **`internal/config` has tests only for loading, defaults and the `middleware` section.** The rules of `Validate` and `ResolvePath` are verified only indirectly. A table-driven test for each rule in [runtime-configuration.md](runtime-configuration.md), Section 7, is recommended.
-3. **`internal/app`, lifecycle.** Coverage is 28 %. The shutdown sequence, the propagation of a listener failure to the whole process, and the transition of `/readyz` to the not-ready state during shutdown are not tested. A test of `Lifecycle.Run` that cancels the context and verifies termination of both listeners is recommended.
-4. **`internal/observe/health` and `/readyz`.** Only `/livez` is tested (Section 6). The readiness state during shutdown is verified only manually.
+2. **`internal/config` has tests only for loading, defaults and the `middleware` section.** `Validate` is covered by a table-driven test, but `ResolvePath` is verified only indirectly.
+3. **`internal/app`, lifecycle.** The shutdown on context cancellation and the propagation of a listener failure to the whole process are tested in `lifecycle_test.go`. Not tested: the forced close when `shutdownTimeout` expires, and shutdown with a request in flight. The 28 % coverage figure predates these tests.
+4. **`internal/observe/health` and `/readyz`.** `internal/edge/admin` tests the endpoints, including the switch of `/readyz` to 503 once `SetShuttingDown` is called. No test checks that `Lifecycle` calls it before closing the listeners, beyond the readiness assertion in `lifecycle_test.go`.
 5. **TLS.** No test starts an HTTPS listener. Certificate loading is covered by the unit tests of `edge/tlsconfig`, but no test serves a request over TLS.
-6. **Components without direct tests.** `request.RemoveHopHeaders` (in `hopbyhop.go`), `middleware.TimeoutMiddleware`, and `middleware.MetricsMiddleware` have neither unit tests nor end-to-end tests that address them directly. The timeout behavior is exercised indirectly by `TestGateway_ServiceTimeoutReturnsGatewayTimeout`, but the expiry of `request_timeout` and the recording of metrics by status code are not verified.
+6. **Components without direct tests.** `request.RemoveHopHeaders` (in `hopbyhop.go`), and `middleware.TimeoutMiddleware` have neither unit tests nor end-to-end tests that address them directly. The timeout behavior is exercised indirectly by `TestGateway_ServiceTimeoutReturnsGatewayTimeout`, but the expiry of `request_timeout` is not verified. `middleware.MetricsMiddleware` is tested for the recorded method and status; its route label is not (item 1).
 
 ---
 
@@ -355,7 +357,7 @@ The stand-in listens on a single port. The service `order-service` refers to por
 The recommendations are listed in decreasing order of expected value:
 
 1. Add a test for route-based metric labels (Section 9.2, item 1). It will show whether `routelabel` is connected to the metrics.
-2. Add table-driven tests for `internal/config` (Section 9.2, item 2).
-3. Add tests for the lifecycle and for readiness (Section 9.2, items 3 and 4).
+2. Add a test for `ResolvePath` and for the expiry of `request_timeout` (Section 9.2, items 2 and 6).
+3. Extend the lifecycle tests with a shutdown that has a request in flight (Section 9.2, item 3).
 4. Add an end-to-end test of the HTTPS listener using a self-signed certificate created in a temporary directory.
 5. Consider executing the proxy benchmarks in CI with recorded results, so that regressions in cost are detected when code changes. This requires a stable machine; results on shared runners are expected to be noisy.

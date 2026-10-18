@@ -17,7 +17,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full request lifecycle and the re
 ```bash
 git clone https://github.com/HAL-X9/aegis.git
 cd aegis
-docker compose up -d --build
+make up
 ```
 
 ### Run from source
@@ -26,7 +26,7 @@ docker compose up -d --build
 git clone https://github.com/HAL-X9/aegis.git
 cd aegis
 go mod download
-go run ./cmd -config configs/aegis.yaml -routes configs/gateway.yaml
+make run
 ```
 
 The sample routes target the host `mock-upstream`, which resolves only inside Docker Compose. When running from source, map it to a local address and start the stand-in; see [docs/testing.md](docs/testing.md), Section 10.2.
@@ -51,8 +51,8 @@ go run ./cmd
 ### Production build
 
 ```bash
-go build -o app ./cmd
-./app -config /path/to/aegis.yaml -routes /path/to/gateway.yaml
+make build
+./bin/aegis -config /path/to/aegis.yaml -routes /path/to/gateway.yaml
 ```
 
 ## Testing & benchmarks

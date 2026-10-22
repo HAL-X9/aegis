@@ -48,7 +48,7 @@ flowchart TB
 1. `edge/public` accepts the connection and forwards to the data plane's compiled `http.Handler`.
 2. The middleware chain runs outermost first: **timeout**, **metrics**, and **request ID** (metrics and request ID can each be switched off with the `middleware` section of the runtime config; both are on by default). Request ID keeps a well-formed client `X-Request-ID` or generates a UUIDv7 and echoes it in the response. The route handler forwards the request to the executor. Panic recovery is not yet part of the chain (see Roadmap).
 3. `proxy.Executor` loads the published `View` (answering `503` if none exists), canonicalizes the request path with `request.CanonicalPath` (answering `400` if it has no canonical form), and rejects methods outside the supported set with `405`. The canonical path is the one both routed and forwarded.
-4. The executor looks the path up in the route index (`router.Engine.Lookup` over `snapshot.RouteIndex`). Lookup offers candidate sets in priority order (static, parameter, wildcard, then `path_prefix` fallbacks). Candidates are filtered by HTTP method using a precomputed bitmask (`internal/httpmethod`) and by header predicates (`router.HeadersMatch`). The first candidate satisfying both wins; if none does, the response is `404` or `405`.
+4. The executor asks `router.Engine.Resolve` for the route. Resolve looks the path up in the route index (`snapshot.RouteIndex`), which offers candidate sets in priority order (static, parameter, wildcard, then `path_prefix` fallbacks), and accepts the first candidate that supports the HTTP method (a precomputed bitmask, `internal/httpmethod`) and satisfies the header predicates (`router.HeadersMatch`). If none does, it reports `NotFound` or `MethodNotAllowed`, which the executor turns into `404` or `405`.
 5. The matched route's rate limiter is consulted once (`policy.RateLimiterSet.Allow`); a rejected request is answered `429` before any upstream attempt. The route's service `timeout`, if configured, then bounds the remainder of the exchange.
 6. `request.UpstreamHeader` builds the outbound header, replacing the `X-Forwarded-*` headers with values derived from the connection. `policy.ExecuteMutations` applies the route's request-side header operations, and hop-by-hop headers are then stripped (`request.RemoveHopHeaders`).
 7. `retry.Do` sends the request through the configured `http.RoundTripper`, repeating idempotent, body-less requests after transient failures when the service configures more than one attempt.
@@ -82,12 +82,8 @@ sequenceDiagram
 
     X->>X: CanonicalPath(URL)
 
-    X->>R: Lookup(canonical path)
-    R-->>X: route candidates
-
-    X->>X: MethodMask match
-    X->>R: Header predicates
-    R-->>X: matched RouteID
+    X->>R: Resolve(canonical path, method, headers)
+    R-->>X: matched route, or NotFound / MethodNotAllowed
 
     X->>V: Route + Service + Policies
     V-->>X: compiled runtime state

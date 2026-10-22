@@ -641,49 +641,14 @@ func BenchmarkHeadersMatch(b *testing.B) {
 	}
 }
 
-// requestMatcher adapts Engine.Lookup's visitor callback to the
-// method+header matching matchRequest needs below.
-type requestMatcher struct {
-	engine    *Engine
-	methodBit httpmethod.Mask
-	headers   http.Header
-	matched   *snapshot.CompiledRoute
-}
-
-func (m *requestMatcher) visit(candidateIDs []snapshot.RouteID) bool {
-	for _, id := range candidateIDs {
-		route := m.engine.Route(id)
-
-		if route.Match.Methods&m.methodBit == 0 {
-			continue
-		}
-
-		if !HeadersMatch(route.Match.Headers, m.headers) {
-			continue
-		}
-
-		m.matched = route
-		return true
-	}
-
-	return false
-}
-
 func matchRequest(
 	engine *Engine,
 	method string,
 	path string,
 	headers http.Header,
 ) *snapshot.CompiledRoute {
-	m := requestMatcher{
-		engine:    engine,
-		methodBit: requestMethodBit(method),
-		headers:   headers,
-	}
-
-	engine.Lookup(path, m.visit)
-
-	return m.matched
+	route, _ := engine.Resolve(path, requestMethodBit(method), headers)
+	return route
 }
 
 func BenchmarkRequestMatch(b *testing.B) {

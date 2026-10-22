@@ -143,47 +143,12 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// pathMatched and methodMatched are tracked across every candidate set
-	// the trie offers, not just the first (most specific) one. Lookup
-	// tries lower-priority branches (static -> param -> wildcard, plus
-	// path_prefix fallbacks) whenever visit returns false, so a route
-	// that structurally matches but fails method/header predicates never
-	// hides a valid fallback route (invariants I-006 and I-007 in
-	// docs/invariants.md; semantics in docs/routing-and-errors.md §1.4).
-	var (
-		pathMatched   bool
-		methodMatched bool
-		matchedRoute  *snapshot.CompiledRoute
-	)
-
-	view.Engine.Lookup(path, func(candidateIDs []snapshot.RouteID) bool {
-		pathMatched = true
-
-		for _, id := range candidateIDs {
-			route := view.Engine.Route(id)
-			if route.Match.Methods&methodBit == 0 {
-				continue
-			}
-			methodMatched = true
-
-			if router.HeadersMatch(route.Match.Headers, r.Header) {
-				matchedRoute = route
-				return true
-			}
-		}
-		return false
-	})
-
-	switch {
-	case !pathMatched:
+	matchedRoute, outcome := view.Engine.Resolve(path, methodBit, r.Header)
+	switch outcome {
+	case router.NotFound:
 		http.NotFound(w, r)
 		return
-	case matchedRoute == nil && methodMatched:
-		// Some candidate supported the method but none had matching
-		// headers — from the client's perspective there is no route here.
-		http.NotFound(w, r)
-		return
-	case matchedRoute == nil:
+	case router.MethodNotAllowed:
 		http.Error(w, "method not allowed for matched route", http.StatusMethodNotAllowed)
 		return
 	}

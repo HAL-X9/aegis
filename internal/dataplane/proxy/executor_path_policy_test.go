@@ -58,7 +58,7 @@ type pathOutcome struct {
 	status int
 
 	// routerPath is the path the router selects the route by: the value
-	// ServeHTTP hands to Engine.Lookup, computed here from the parsed request
+	// ServeHTTP hands to Engine.Resolve, computed here from the parsed request
 	// with the same function.
 	routerPath string
 

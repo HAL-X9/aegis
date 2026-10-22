@@ -139,7 +139,7 @@ every header predicate of the route is satisfied by the request.
 
 **Enforcement.** Implemented. The method bit check and
 `router.HeadersMatch` run before the route is returned from the
-candidate loop in `proxy/executor.go`.
+candidate loop in `router.Engine.Resolve`.
 
 **Verification.** Test (`engine_test.go`, `match_headers_test.go`).
 Quint planned.
@@ -155,8 +155,8 @@ higher-priority candidate that matches the path fails on method or
 header predicates. Both failures are recorded and produce the correct
 status (404 or 405), as specified in `routing-and-errors.md`.
 
-**Enforcement.** Implemented. The loop in `proxy/executor.go` and
-`router.Engine.Lookup` continue past a failed predicate.
+**Enforcement.** Implemented. The loop in `router.Engine.Resolve` and
+`snapshot.RouteIndex.Lookup` continue past a failed predicate.
 
 **Verification.** Code reading and tests. Quint with Apalache planned
 as the primary verification.

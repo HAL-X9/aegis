@@ -51,13 +51,13 @@ The tests are organized in three layers, supplemented by fuzz targets and benchm
 
 | Layer       | Location                               | Scope                                                                    | Count         |
 |-------------|----------------------------------------|--------------------------------------------------------------------------|---------------|
-| Unit        | `internal/**/*_test.go`                | the internal logic of one package                                        | 93 tests      |
-| Integration | `tests/integration/`                   | routing and policies through the exported interfaces of the packages     | 8 tests       |
+| Unit        | `internal/**/*_test.go`                | the internal logic of one package                                        | 123 tests      |
+| Integration | `tests/integration/`                   | policies through the exported interfaces of the packages                 | 4 tests       |
 | End-to-end  | `tests/e2e/`                           | the complete path from YAML to the HTTP response                         | 7 tests       |
 | Fuzz        | `internal/**/*_test.go` (`Fuzz*`)      | properties of path handling and routing on generated input (Section 4.2) | 5 targets     |
 | Benchmarks  | `internal/**/*_test.go` (`Benchmark*`) | the cost of the hot path (Section 7)                                     | 17 benchmarks |
 
-The total number of `Test*` functions is 135. Subtests created with `t.Run` are not included in these figures. Each fuzz target also runs as an ordinary test over its seed corpus when `go test` is invoked.
+The total number of `Test*` functions is 134. Subtests created with `t.Run` are not included in these figures. Each fuzz target also runs as an ordinary test over its seed corpus when `go test` is invoked.
 
 The integration and end-to-end tests require no external services. The end-to-end tests host the upstream stand-in in memory through `httptest` and use no fixed ports. Containers, Docker Compose, and the `mock/` directory are not required for the tests.
 
@@ -75,7 +75,7 @@ Unit tests reside alongside the code they verify and may reference unexported id
 | `internal/controlplane/compile`  | 17    | —          | construction of the radix tree, flattening of the index into arrays, compilation of routes and policies, merging of header operations, and header predicates                                                            |
 | `internal/controlplane/loader`   | 1     | —          | loading of the manifest from a file and the joint operation of the decoder and validation                                                                                                                               |
 | `internal/controlplane/pipeline` | —     | —          | no `Test*` functions; covered by the fuzz target `FuzzPathPrefixBuild` (Section 4.2) and by the end-to-end tests                                                                                                        |
-| `internal/dataplane/router`      | 4     | 7          | path matching, header predicates, and lookup cost on deep and wide trees                                                                                                                                                |
+| `internal/dataplane/router`      | 7     | 7          | route resolution (`Resolve`: outcomes, fallback to a less specific route, no allocations), header predicates, and lookup cost on deep and wide trees                                                                                                                                                |
 | `internal/dataplane/proxy`       | 4     | 8          | `Executor`: routing and canonical paths, status codes on upstream failure, and network cost (Section 7)                                                                                                                 |
 | `internal/dataplane/retry`       | 5     | —          | retries: idempotency, request body, attempt timeout, and cancellation of the request context                                                                                                                            |
 | `internal/dataplane/request`     | 7     | 1          | canonicalization of paths, construction of upstream headers and `X-Forwarded-*`                                                                                                                                         |
@@ -130,16 +130,12 @@ The oracles are checked for strength by mutation: breaking the child scan or the
 
 ## 5. Integration tests (`tests/integration`)
 
-The integration tests construct a routing engine from a manually specified `snapshot.CompiledConfig`, not from YAML. They verify the interaction of `router.Engine`, `httpmethod`, and `policy` through their exported interfaces.
+The integration tests exercise the `policy` package (header mutations and rate limiters) through its exported interfaces, with manually specified `snapshot` values, not YAML.
 
 **Table 4.** Integration tests.
 
 | File                                                      | Test                                          | Verification                                                                                                           |
 |-----------------------------------------------------------|-----------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
-| [proxy_test.go](../tests/integration/proxy_test.go)       | `TestRouting_MatchesPathMethodAndHeaders`     | a route is selected when the path, method, and headers all match                                                       |
-|                                                           | `TestRouting_UnknownPathIsNotFound`           | an unknown path matches no route                                                                                       |
-|                                                           | `TestRouting_WrongMethodIsMethodNotAllowed`   | the path matches but the method does not; the result is `405`                                                          |
-|                                                           | `TestRouting_MissingRequiredHeaderIsNotFound` | the absence of a required header yields `404`, not `405` ([routing-and-errors.md](routing-and-errors.md), Section 2.1) |
 | [policies_test.go](../tests/integration/policies_test.go) | `TestExecuteMutations_OrderingAndScopes`      | `remove` is applied before `add` (add-if-absent); an existing header is not overwritten                                |
 |                                                           | `TestExecuteMutations_NilPlanIsNoop`          | the absence of a plan leaves the headers unchanged                                                                     |
 |                                                           | `TestRateLimiterSet_EnforcesBurstThenRejects` | requests are rejected once `burst` is exhausted                                                                        |
@@ -344,7 +340,7 @@ The stand-in listens on a single port. The service `order-service` refers to por
 
 ## 11. Conventions for test code
 
-- **Names.** Tests are named `Test<Subject>_<Behavior>`, for example `TestRouting_UnknownPathIsNotFound` or `TestGateway_ServiceTimeoutReturnsGatewayTimeout`. Table cases are named by a string describing the condition, for example `"too long"` or `"repeated"`.
+- **Names.** Tests are named `Test<Subject>_<Behavior>`, for example `TestExecuteMutations_NilPlanIsNoop` or `TestGateway_ServiceTimeoutReturnsGatewayTimeout`. Table cases are named by a string describing the condition, for example `"too long"` or `"repeated"`.
 - **Helpers.** Helper functions call `t.Helper()`. Temporary files are created with `t.TempDir()`, and resources are released with `t.Cleanup`.
 - **Network tests.** These use `httptest.NewServer` and addresses of the form `:0`, so that they do not conflict with ports in use.
 - **Assertions.** Tests compare status codes and response bodies, not the text of internal errors.

@@ -34,8 +34,8 @@ At process startup:
 6. `app.Bootstrap` publishes the engine, together with the rate limiters, as
    one `proxy.View` (`Executor.Publish`). The public HTTP server hands all
    paths to `internal/dataplane/proxy.Executor`, which canonicalizes the path,
-   calls `engine.Lookup`, applies method and header predicate filtering, and
-   proxies the request to the selected upstream.
+   calls `engine.Resolve` to select the route, and proxies the request to
+   the selected upstream.
 
 There is no hot config reload in the current implementation: the `View` is
 published once during `app.Bootstrap`. Changing routes requires a process
@@ -91,11 +91,13 @@ exposes `Lookup(path string, visit func([]snapshot.RouteID) bool)`,
 and `UpstreamURL(route *snapshot.CompiledRoute) *url.URL`. Callers outside
 this package must not depend on the index internals.
 
-`internal/dataplane/proxy/executor.go` orchestrates matching for each
-request: it calls `Lookup` on the path, filters candidates by permitted
-HTTP method, applies header predicate matching via `router.HeadersMatch`,
-constructs the outbound request from the compiled upstream origin plus the
-incoming path and query, and performs the upstream round trip.
+`router.Engine.Resolve` selects the route for a request: it calls `Lookup` on
+the path, filters candidates by permitted HTTP method, applies header
+predicate matching via `router.HeadersMatch`, and reports `Matched`,
+`NotFound`, or `MethodNotAllowed`. `internal/dataplane/proxy/executor.go`
+translates a failed outcome into `404` or `405` and otherwise constructs the
+outbound request from the compiled upstream origin plus the incoming path and
+query, and performs the upstream round trip.
 
 ## Data boundaries
 

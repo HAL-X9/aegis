@@ -1,6 +1,7 @@
 package app
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
 	edgeadmin "github.com/HAL-X9/aegis/internal/edge/admin"
 	edgepublic "github.com/HAL-X9/aegis/internal/edge/public"
+	"github.com/HAL-X9/aegis/internal/edge/tlsconfig"
 	"github.com/HAL-X9/aegis/internal/observe/health"
 	"github.com/HAL-X9/aegis/internal/observe/metrics"
 	"github.com/prometheus/client_golang/prometheus"
@@ -73,12 +75,18 @@ func Bootstrap(cfg *config.Runtime, manifest validate.Validated) (*Dependencies,
 
 	healthSvc := health.NewHealth()
 
-	systemHTTP, err := edgeadmin.NewSystemServer(cfg, healthSvc, promhttp.Handler())
+	systemHandler := edgeadmin.NewRouter(edgeadmin.NewSystemHandler(healthSvc, promhttp.Handler()))
+	systemHTTP, err := newHTTPServer(cfg.Listeners.System, systemHandler)
 	if err != nil {
 		return nil, fmt.Errorf("build system HTTP server: %w", err)
 	}
 
-	publicHTTP, err := edgepublic.NewPublicServer(cfg, executor, metricsCollector)
+	publicHandler := edgepublic.NewHandler(executor, edgepublic.Options{
+		RequestTimeout: cfg.Listeners.Public.Timeouts.RequestTimeout,
+		RequestID:      cfg.Middleware.RequestID,
+		Metrics:        metricsCollector,
+	})
+	publicHTTP, err := newHTTPServer(cfg.Listeners.Public, publicHandler)
 	if err != nil {
 		return nil, fmt.Errorf("build public HTTP server: %w", err)
 	}
@@ -89,6 +97,31 @@ func Bootstrap(cfg *config.Runtime, manifest validate.Validated) (*Dependencies,
 		SystemHTTP: systemHTTP,
 		Health:     healthSvc,
 		Engine:     engine,
+	}, nil
+}
+
+// newHTTPServer builds the net/http server of one listener around handler,
+// loading its TLS certificate when the listener has a tls section. It does not
+// open the socket; see Lifecycle.Run.
+func newHTTPServer(listener config.HTTP, handler http.Handler) (*http.Server, error) {
+	var tlsConfig *tls.Config
+	if listener.TLS != nil {
+		var err error
+		tlsConfig, err = tlsconfig.Load(listener.TLS.CertFile, listener.TLS.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("build TLS configuration: %w", err)
+		}
+	}
+
+	return &http.Server{
+		Addr:              listener.Addr,
+		Handler:           handler,
+		ReadTimeout:       listener.Timeouts.ReadTimeout,
+		ReadHeaderTimeout: listener.Timeouts.ReadHeaderTimeout,
+		WriteTimeout:      listener.Timeouts.WriteTimeout,
+		IdleTimeout:       listener.Timeouts.IdleTimeout,
+		TLSConfig:         tlsConfig,
+		MaxHeaderBytes:    listener.MaxHeaderBytes,
 	}, nil
 }
 

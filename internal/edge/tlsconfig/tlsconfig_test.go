@@ -14,8 +14,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/HAL-X9/aegis/internal/config"
 )
 
 // writeKeyPair writes a fresh self-signed certificate and its key as PEM
@@ -58,19 +56,12 @@ func writePEM(t *testing.T, path, blockType string, der []byte) {
 	}
 }
 
-func TestBuildNilMeansPlainHTTP(t *testing.T) {
-	got, err := Build(nil)
-	if err != nil || got != nil {
-		t.Fatalf("Build(nil) = (%v, %v), want (nil, nil)", got, err)
-	}
-}
-
-func TestBuildLoadsCertificate(t *testing.T) {
+func TestLoadReadsCertificate(t *testing.T) {
 	certPath, keyPath := writeKeyPair(t, t.TempDir(), "server")
 
-	got, err := Build(&config.TLSConfig{CertFile: certPath, KeyFile: keyPath})
+	got, err := Load(certPath, keyPath)
 	if err != nil {
-		t.Fatalf("Build: %v", err)
+		t.Fatalf("Load: %v", err)
 	}
 	if len(got.Certificates) != 1 {
 		t.Errorf("certificates = %d, want 1", len(got.Certificates))
@@ -80,25 +71,25 @@ func TestBuildLoadsCertificate(t *testing.T) {
 	}
 }
 
-func TestBuildFailures(t *testing.T) {
+func TestLoadFailures(t *testing.T) {
 	dir := t.TempDir()
 	certA, keyA := writeKeyPair(t, dir, "a")
 	_, keyB := writeKeyPair(t, dir, "b")
 	missing := filepath.Join(dir, "absent.pem")
 
-	tests := map[string]config.TLSConfig{
-		"missing certificate": {CertFile: missing, KeyFile: keyA},
-		"missing key":         {CertFile: certA, KeyFile: missing},
-		"key of another pair": {CertFile: certA, KeyFile: keyB},
+	tests := map[string]struct{ cert, key string }{
+		"missing certificate": {cert: missing, key: keyA},
+		"missing key":         {cert: certA, key: missing},
+		"key of another pair": {cert: certA, key: keyB},
 	}
 
-	for name, cfg := range tests {
+	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := Build(&cfg)
+			_, err := Load(tc.cert, tc.key)
 			if err == nil {
-				t.Fatal("Build succeeded, want an error")
+				t.Fatal("Load succeeded, want an error")
 			}
-			if !strings.Contains(err.Error(), cfg.CertFile) {
+			if !strings.Contains(err.Error(), tc.cert) {
 				t.Errorf("error = %v, want it to name the certificate path", err)
 			}
 		})

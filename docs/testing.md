@@ -57,7 +57,7 @@ The tests are organized in three layers, supplemented by fuzz targets and benchm
 | Fuzz        | `internal/**/*_test.go` (`Fuzz*`)      | properties of path handling and routing on generated input (Section 4.2) | 5 targets     |
 | Benchmarks  | `internal/**/*_test.go` (`Benchmark*`) | the cost of the hot path (Section 7)                                     | 17 benchmarks |
 
-The total number of `Test*` functions is 134. Subtests created with `t.Run` are not included in these figures. Each fuzz target also runs as an ordinary test over its seed corpus when `go test` is invoked.
+The total number of `Test*` functions is 135. Subtests created with `t.Run` are not included in these figures. Each fuzz target also runs as an ordinary test over its seed corpus when `go test` is invoked.
 
 The integration and end-to-end tests require no external services. The end-to-end tests host the upstream stand-in in memory through `httptest` and use no fixed ports. Containers, Docker Compose, and the `mock/` directory are not required for the tests.
 
@@ -80,12 +80,12 @@ Unit tests reside alongside the code they verify and may reference unexported id
 | `internal/dataplane/retry`       | 5     | —          | retries: idempotency, request body, attempt timeout, and cancellation of the request context                                                                                                                            |
 | `internal/dataplane/request`     | 7     | 1          | canonicalization of paths, construction of upstream headers and `X-Forwarded-*`                                                                                                                                         |
 | `internal/snapshot`              | 3     | —          | the single table of well-known header IDs: every ID is named once in canonical form, and name-to-ID and ID-to-name lookups agree |
-| `internal/edge/tlsconfig`        | 3     | —          | building the listener TLS configuration: plain HTTP for a nil section, a valid pair, and the failures for a missing file or a mismatched key |
+| `internal/edge/tlsconfig`        | 2     | —          | loading the listener certificate: a valid pair, and the failures for a missing file or a mismatched key |
 | `internal/yamlx`                 | 4     | —          | strict decoding: an unknown key, a missing file, and defaults kept around keys that are present |
 | `internal/config`                | 9     | —          | loading on top of `DefaultRuntime`: a minimal document yields the defaults, explicit values (including a zero) override them, the `middleware` switches, rejection of an unknown key, and the required listen addresses; every rule of `Validate` with a failing case |
 | `internal/edge/admin`            | 4     | —          | system endpoints: `/livez`, `/readyz` (including the switch to 503 at shutdown), delegation of `/metrics`, and rejection of non-GET methods |
-| `internal/app`                   | 3     | —          | `Lifecycle`: rejection of missing servers, stopping both listeners on context cancellation, and failure of the whole process when one listener cannot bind |
-| `internal/edge/public`           | 2     | —          | composition of the public middleware chain for each combination of the `middleware` switches                                                                                                                            |
+| `internal/app`                   | 5     | —          | `Lifecycle`: rejection of missing servers, stopping both listeners on context cancellation, and failure of the whole process when one listener cannot bind; `newHTTPServer`: mapping of the listener settings and an unreadable certificate |
+| `internal/edge/public`           | 2     | —          | composition of the public middleware chain for each combination of its `Options`, and the request deadline                                                                                                                            |
 | `internal/dataplane/middleware`  | 8     | 1          | `X-Request-Id`: acceptance of a valid value, replacement of an invalid one, and absence of allocations; the metrics middleware: recorded method and status, and reset of the pooled recorder                                                                                                                  |
 | `internal/httpmethod`            | 2     | —          | parsing of methods and bitmasks                                                                                                                                                                                         |
 

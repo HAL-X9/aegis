@@ -159,9 +159,6 @@ linters:
             - github.com/HAL-X9/aegis/internal/observe
             # The edge's own subpackages, such as edge/tlsconfig.
             - github.com/HAL-X9/aegis/internal/edge
-            # TODO(arch) step 3: servers take their listener slice, not the whole
-            # config.Runtime; the config import may then shrink or go.
-            - github.com/HAL-X9/aegis/internal/config
             # TODO(arch) step 4: the middleware package moves under edge.
             - github.com/HAL-X9/aegis/internal/dataplane/middleware
 
@@ -175,7 +172,6 @@ linters:
             - $gostd
             - github.com/HAL-X9/aegis/internal/observe
             - github.com/HAL-X9/aegis/internal/edge
-            - github.com/HAL-X9/aegis/internal/config
             - github.com/HAL-X9/aegis/internal/dataplane/middleware
             - github.com/prometheus/client_golang
 

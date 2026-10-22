@@ -144,7 +144,7 @@ Durations are written as strings accepted by `time.ParseDuration`, for example `
 
 ## 4. Listeners (`listeners`)
 
-The process starts two independent HTTP servers. The public listener serves client traffic through routing and the proxy. The system listener serves operational endpoints and does not pass requests through routing. The server for each listener is constructed by [`NewPublicServer`](../internal/edge/public/server.go) or [`NewSystemServer`](../internal/edge/admin/server.go).
+The process starts two independent HTTP servers. The public listener serves client traffic through routing and the proxy. The system listener serves operational endpoints and does not pass requests through routing. The `http.Server` of each listener is constructed by `newHTTPServer` ([container.go](../internal/app/container.go)) around the handler built by [`public.NewHandler`](../internal/edge/public/chain.go) or by the system router ([router.go](../internal/edge/admin/router.go)).
 
 ### 4.1 Common HTTP listener fields
 
@@ -167,7 +167,7 @@ The field `addr` is the only one without a default. An explicit zero `read_timeo
 
 ### 4.2 Public listener (`listeners.public`)
 
-The public listener accepts client requests. Each request traverses a middleware chain assembled by `NewPublicServer` ([server.go](../internal/edge/public/server.go)). The layers, from outermost to innermost, are:
+The public listener accepts client requests. Each request traverses a middleware chain assembled by `public.NewHandler` ([chain.go](../internal/edge/public/chain.go)). The layers, from outermost to innermost, are:
 
 1. `timeout`, which applies `request_timeout`;
 2. `metrics`, which records the count and duration of requests (optional);

@@ -57,7 +57,7 @@ The tests are organized in three layers, supplemented by fuzz targets and benchm
 | Fuzz        | `internal/**/*_test.go` (`Fuzz*`)      | properties of path handling and routing on generated input (Section 4.2) | 5 targets     |
 | Benchmarks  | `internal/**/*_test.go` (`Benchmark*`) | the cost of the hot path (Section 7)                                     | 17 benchmarks |
 
-The total number of `Test*` functions is 134. Subtests created with `t.Run` are not included in these figures. Each fuzz target also runs as an ordinary test over its seed corpus when `go test` is invoked.
+The total number of `Test*` functions is 135. Subtests created with `t.Run` are not included in these figures. Each fuzz target also runs as an ordinary test over its seed corpus when `go test` is invoked.
 
 The integration and end-to-end tests require no external services. The end-to-end tests host the upstream stand-in in memory through `httptest` and use no fixed ports. Containers, Docker Compose, and the `mock/` directory are not required for the tests.
 
@@ -76,7 +76,7 @@ Unit tests reside alongside the code they verify and may reference unexported id
 | `internal/controlplane/loader`   | 1     | —          | loading of the manifest from a file and the joint operation of the decoder and validation                                                                                                                               |
 | `internal/controlplane/pipeline` | —     | —          | no `Test*` functions; covered by the fuzz target `FuzzPathPrefixBuild` (Section 4.2) and by the end-to-end tests                                                                                                        |
 | `internal/dataplane/router`      | 7     | 7          | route resolution (`Resolve`: outcomes, fallback to a less specific route, no allocations), header predicates, and lookup cost on deep and wide trees                                                                                                                                                |
-| `internal/dataplane/proxy`       | 4     | 8          | `Executor`: routing and canonical paths, status codes on upstream failure, and network cost (Section 7)                                                                                                                 |
+| `internal/dataplane/proxy`       | 5     | 8          | `Executor`: routing and canonical paths, status codes on upstream failure, the allocation budget of a proxied request, and network cost (Section 7)                                                                                                                 |
 | `internal/dataplane/retry`       | 5     | —          | retries: idempotency, request body, attempt timeout, and cancellation of the request context                                                                                                                            |
 | `internal/dataplane/request`     | 7     | 1          | canonicalization of paths, construction of upstream headers and `X-Forwarded-*`                                                                                                                                         |
 | `internal/snapshot`              | 3     | —          | the single table of well-known header IDs: every ID is named once in canonical form, and name-to-ID and ID-to-name lookups agree |
@@ -95,7 +95,7 @@ The counts in Table 3 are the numbers of `Test*` and `Benchmark*` functions; fuz
 
 - Checks are organized as table-driven tests: a `map` of named cases iterated with `t.Run` (see [request_id_test.go](../internal/dataplane/middleware/request_id_test.go)).
 - Helper functions call `t.Helper()` so that failures are reported at the call site.
-- The absence of allocations is asserted with `testing.AllocsPerRun`; for example, `TestRequestIDDoesNotAllocateForValidClientID`. Such a test fails when an allocation appears on the hot path, even if the functional behavior is unchanged.
+- The absence of allocations is asserted with `testing.AllocsPerRun`; for example, `TestRequestIDDoesNotAllocateForValidClientID`. Such a test fails when an allocation appears on the hot path, even if the functional behavior is unchanged. `TestServeHTTPAllocationBudget` applies the same technique to `Executor.ServeHTTP` as an upper bound per scenario (4 allocations, 6 with twenty extra request headers). It is excluded under `-race`, because `sync.Pool` then drops objects at random and makes the count nondeterministic; the plain `go test ./...` run enforces it.
 
 ### 4.2 Fuzz tests
 

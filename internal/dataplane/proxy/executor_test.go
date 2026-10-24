@@ -605,7 +605,7 @@ func TestExecutorMapsUpstreamFailures(t *testing.T) {
 			engine := buildTestEngine(t, testConfig(snapshot.CompiledRoute{
 				Name:     "api",
 				Match:    snapshot.CompiledMatch{PathPrefix: "/api", Methods: httpmethod.All},
-				Policies: snapshot.CompiledRoutePolicies{RateLimitID: -1, Timeout: tt.timeout},
+				Policies: snapshot.CompiledRoutePolicies{RateLimitID: snapshot.NoRateLimit, Timeout: tt.timeout},
 			}))
 			exec := newTestExecutor(t, engine, tt.roundTrip)
 

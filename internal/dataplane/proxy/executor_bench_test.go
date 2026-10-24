@@ -203,7 +203,7 @@ func buildProxyBenchEngineWithPolicy(tb testing.TB) *router.Engine {
 					Methods:    httpmethod.All,
 				},
 				Policies: snapshot.CompiledRoutePolicies{
-					RateLimitID: -1,
+					RateLimitID: snapshot.NoRateLimit,
 					Headers: snapshot.CompiledHeaders{
 						Request: snapshot.CompiledHeadersPlan{
 							Ops: []snapshot.HeaderInstruction{

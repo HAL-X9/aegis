@@ -32,7 +32,7 @@ func pathPolicyConfig() *snapshot.CompiledConfig {
 			Service: service,
 			Match:   snapshot.CompiledMatch{PathPrefix: prefix, Methods: httpmethod.All},
 			Policies: snapshot.CompiledRoutePolicies{
-				RateLimitID: -1,
+				RateLimitID: snapshot.NoRateLimit,
 				Headers: snapshot.CompiledHeaders{Request: snapshot.CompiledHeadersPlan{Ops: []snapshot.HeaderInstruction{
 					{HeaderID: snapshot.HeaderXRequestID, Op: snapshot.HeaderOpSet, Value: name},
 				}}},

@@ -154,7 +154,7 @@ The readiness flip and the listener shutdown happen back to back, with no grace 
 | `internal/dataplane/retry` | Retries of idempotent upstream requests |
 | `internal/dataplane/routelabel` | Context-carried recorder for the matched route's name. The executor writes to it; nothing creates or reads it yet (see Roadmap) |
 | `internal/dataplane/middleware` | Request ID, metrics (method and status), and request-timeout middleware |
-| `internal/edge` | Listener-facing HTTP servers: public traffic and admin endpoints |
+| `internal/edge` | Listener-facing HTTP: the public handler with its middleware chain (`public`), the system endpoints (`admin`), and TLS loading (`tlsconfig`). The `http.Server` of each listener is built by `app` |
 | `internal/observe` | Health checks and Prometheus metrics registration |
 
 ## Dependency rules
@@ -168,7 +168,7 @@ The layering is enforced by the `depguard` linter, configured in [.golangci.yml]
 | `yamlx` | `gopkg.in/yaml.v3` | other internal packages |
 | `config` | `yamlx` | other internal packages |
 | `observe` | `prometheus/client_golang` | other internal packages |
-| `controlplane` | `snapshot`, `httpmethod`, its own subpackages | `dataplane`, `edge`, `observe`, `app`, and `config` |
+| `controlplane` | `snapshot`, `httpmethod`, `yamlx`, its own subpackages | `dataplane`, `edge`, `observe`, `app`, and `config` |
 | `dataplane` | `snapshot`, `httpmethod`, its own subpackages | `controlplane`, `edge`, `config`, `observe`, `app` |
 | `edge` | `observe`, standard library, its own subpackages; transitionally `dataplane/middleware` (see below) | `controlplane`, other `dataplane` packages, `app` |
 | `app` | everything (composition root) | — |
@@ -176,6 +176,8 @@ The layering is enforced by the `depguard` linter, configured in [.golangci.yml]
 Nothing under `internal/` may import `internal/app`; only `cmd` and tests outside `internal/` do.
 
 The leaf layers (first five rows, plus `edge`) use an allow-list, so a new import, including a new third-party module, fails until it is named in the config. The others use a deny-list of the layers they must not reach. Test files have their own rules: for example, data plane tests may build snapshots with `controlplane/compile`, and edge tests may create a Prometheus registry.
+
+Inside the layers the direction of dependencies is fixed as well, for production code. In the control plane, `schema` and `ir` are leaves, `validate` knows `schema`, `normalize` knows `schema` and `ir`, `compile` knows `ir` and `snapshot`, `loader` knows `schema` and `validate`, and `pipeline` composes `validate`, `normalize` and `compile`. In the data plane, `request` and `routelabel` are leaves, `policy`, `retry` and `router` know only `snapshot` (and `httpmethod`), and none of them may import `proxy` or one another.
 
 **Known violations.** Each is marked `TODO(arch)` in `.golangci.yml` and is allowed only until the step that removes it:
 

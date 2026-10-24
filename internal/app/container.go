@@ -29,7 +29,6 @@ type Dependencies struct {
 	PublicHTTP *http.Server
 	SystemHTTP *http.Server
 	Health     *health.Health
-	Engine     *router.Engine
 }
 
 // Bootstrap compiles the routes manifest, builds the routing engine and
@@ -96,7 +95,6 @@ func Bootstrap(cfg *config.Runtime, manifest validate.Validated) (*Dependencies,
 		PublicHTTP: publicHTTP,
 		SystemHTTP: systemHTTP,
 		Health:     healthSvc,
-		Engine:     engine,
 	}, nil
 }
 

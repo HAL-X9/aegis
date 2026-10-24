@@ -171,6 +171,107 @@ linters:
             - github.com/HAL-X9/aegis/internal/dataplane/middleware
             - github.com/prometheus/client_golang
 
+        # --- Direction inside the layers --------------------------------------
+        # The control plane is a pipeline, schema -> validate -> normalize ->
+        # compile, driven by loader and pipeline; in the data plane, proxy sits
+        # on top of small packages that know nothing about one another. These
+        # allow-lists keep each package to the neighbours it may know. They
+        # cover production code: tests may import their neighbours.
+        leaf-packages:
+          list-mode: strict
+          files:
+            - "**/internal/controlplane/schema/**"
+            - "**/internal/controlplane/ir/**"
+            - "**/internal/dataplane/request/**"
+            - "**/internal/dataplane/routelabel/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+
+        controlplane-validate:
+          list-mode: strict
+          files:
+            - "**/internal/controlplane/validate/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/HAL-X9/aegis/internal/controlplane/schema
+            - github.com/HAL-X9/aegis/internal/httpmethod
+            - golang.org/x/net/http/httpguts
+
+        controlplane-normalize:
+          list-mode: strict
+          files:
+            - "**/internal/controlplane/normalize/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/HAL-X9/aegis/internal/controlplane/schema
+            - github.com/HAL-X9/aegis/internal/controlplane/ir
+
+        controlplane-compile:
+          list-mode: strict
+          files:
+            - "**/internal/controlplane/compile/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/HAL-X9/aegis/internal/controlplane/ir
+            - github.com/HAL-X9/aegis/internal/snapshot
+            - github.com/HAL-X9/aegis/internal/httpmethod
+
+        controlplane-loader:
+          list-mode: strict
+          files:
+            - "**/internal/controlplane/loader/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/HAL-X9/aegis/internal/controlplane/schema
+            - github.com/HAL-X9/aegis/internal/controlplane/validate
+            - github.com/HAL-X9/aegis/internal/yamlx
+
+        controlplane-pipeline:
+          list-mode: strict
+          files:
+            - "**/internal/controlplane/pipeline/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/HAL-X9/aegis/internal/controlplane/validate
+            - github.com/HAL-X9/aegis/internal/controlplane/normalize
+            - github.com/HAL-X9/aegis/internal/controlplane/compile
+            - github.com/HAL-X9/aegis/internal/snapshot
+
+        dataplane-policy:
+          list-mode: strict
+          files:
+            - "**/internal/dataplane/policy/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/HAL-X9/aegis/internal/snapshot
+            - golang.org/x/time/rate
+
+        dataplane-retry:
+          list-mode: strict
+          files:
+            - "**/internal/dataplane/retry/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/HAL-X9/aegis/internal/snapshot
+
+        dataplane-router:
+          list-mode: strict
+          files:
+            - "**/internal/dataplane/router/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/HAL-X9/aegis/internal/snapshot
+            - github.com/HAL-X9/aegis/internal/httpmethod
+
         # --- Composition root -------------------------------------------------
         no-app:
           # internal/app wires everything, so nothing inside internal/ may

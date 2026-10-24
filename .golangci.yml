@@ -43,10 +43,6 @@ linters:
           allow:
             - $gostd
             - github.com/HAL-X9/aegis/internal/httpmethod
-            # TODO(arch) follow-up: CompiledRateLimit.Limit is a rate.Limit, so
-            # the contract leaks the limiter library. Make it a float64 in the
-            # snapshot and convert in dataplane/policy, then drop this line.
-            - golang.org/x/time/rate
 
         config:
           # Data, defaults and validation of the process config.

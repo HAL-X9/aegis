@@ -220,14 +220,14 @@ func resolveRouteRateLimitID(routeName string, refs []ir.PolicyRef, policies *ir
 		index[n] = int32(i)
 	}
 
-	found := int32(-1)
+	found := snapshot.NoRateLimit
 	for _, ref := range refs {
 		id, ok := index[ref.Name]
 		if !ok {
 			continue
 		}
-		if found != -1 {
-			return -1, fmt.Errorf("route %q references multiple rate-limit policies", routeName)
+		if found != snapshot.NoRateLimit {
+			return snapshot.NoRateLimit, fmt.Errorf("route %q references multiple rate-limit policies", routeName)
 		}
 		found = id
 	}

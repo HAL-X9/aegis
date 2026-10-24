@@ -65,7 +65,7 @@ func TestRoutes(t *testing.T) {
 					Methods:    methodMask,
 				},
 				Policies: snapshot.CompiledRoutePolicies{
-					RateLimitID: -1,
+					RateLimitID: snapshot.NoRateLimit,
 				},
 			},
 		}
@@ -136,8 +136,8 @@ func TestRoutes(t *testing.T) {
 			t.Fatalf("Methods = %#v, want httpmethod.All (%#v)", got, httpmethod.All)
 		}
 
-		if got := out[0].Policies.RateLimitID; got != -1 {
-			t.Fatalf("RateLimitID = %d, want -1", got)
+		if got := out[0].Policies.RateLimitID; got != snapshot.NoRateLimit {
+			t.Fatalf("RateLimitID = %d, want snapshot.NoRateLimit (%d)", got, snapshot.NoRateLimit)
 		}
 	})
 

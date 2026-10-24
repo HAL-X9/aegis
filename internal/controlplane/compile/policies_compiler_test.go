@@ -6,7 +6,6 @@ import (
 
 	"github.com/HAL-X9/aegis/internal/controlplane/ir"
 	"github.com/HAL-X9/aegis/internal/snapshot"
-	"golang.org/x/time/rate"
 )
 
 func TestRateLimits_nilReturnsError(t *testing.T) {
@@ -50,8 +49,8 @@ func TestRateLimits_compilesRateLimits(t *testing.T) {
 
 	got := out.Items[0]
 
-	if got.Limit != rate.Limit(10) {
-		t.Errorf("Limit = %v, want %v", got.Limit, rate.Limit(10))
+	if got.Limit != 10 {
+		t.Errorf("Limit = %v, want %v", got.Limit, 10)
 	}
 
 	if got.Burst != 20 {
@@ -87,15 +86,15 @@ func TestRateLimits_rateLimitsDeterministicOrder(t *testing.T) {
 
 	want := []snapshot.CompiledRateLimit{
 		{
-			Limit: rate.Limit(10),
+			Limit: 10,
 			Burst: 1,
 		},
 		{
-			Limit: rate.Limit(20),
+			Limit: 20,
 			Burst: 2,
 		},
 		{
-			Limit: rate.Limit(30),
+			Limit: 30,
 			Burst: 3,
 		},
 	}

@@ -5,9 +5,6 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// NoRateLimit marks a route as having no rate-limit policy attached.
-const NoRateLimit = -1
-
 // RateLimiterSet holds one token-bucket limiter per compiled rate-limit
 // policy, indexed by the policy's identifier. A limiter is shared by every
 // route that references its policy and is safe for concurrent use.
@@ -20,14 +17,14 @@ type RateLimiterSet struct {
 func NewRateLimiterSet(compiled []snapshot.CompiledRateLimit) *RateLimiterSet {
 	limiters := make([]*rate.Limiter, len(compiled))
 	for i, c := range compiled {
-		limiters[i] = rate.NewLimiter(c.Limit, c.Burst)
+		limiters[i] = rate.NewLimiter(rate.Limit(c.Limit), c.Burst)
 	}
 	return &RateLimiterSet{limiters: limiters}
 }
 
 // Allow reports whether the request is permitted under the referenced
 // rate-limit policy. A nil route, or any ID without a corresponding
-// limiter — including NoRateLimit and any out-of-range zero-value ID from
+// limiter — including snapshot.NoRateLimit and any out-of-range zero-value ID from
 // an unset field — is treated as "no limit" rather than panicking or
 // silently picking policy 0.
 func (s *RateLimiterSet) Allow(route *snapshot.CompiledRoute) bool {

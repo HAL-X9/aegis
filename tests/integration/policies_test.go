@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"testing"
 
-	"golang.org/x/time/rate"
-
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
@@ -58,7 +56,7 @@ func TestExecuteMutations_NilPlanIsNoop(t *testing.T) {
 // a rate-limit policy is rejected once its burst is exhausted.
 func TestRateLimiterSet_EnforcesBurstThenRejects(t *testing.T) {
 	limiters := policy.NewRateLimiterSet([]snapshot.CompiledRateLimit{
-		{Limit: rate.Limit(0), Burst: 1}, // no refill: exactly one request allowed
+		{Limit: 0, Burst: 1}, // no refill: exactly one request allowed
 	})
 
 	route := &snapshot.CompiledRoute{Policies: snapshot.CompiledRoutePolicies{RateLimitID: 0}}
@@ -75,10 +73,10 @@ func TestRateLimiterSet_EnforcesBurstThenRejects(t *testing.T) {
 // rate-limit policy attached is never throttled, regardless of volume.
 func TestRateLimiterSet_NoRateLimitAlwaysAllows(t *testing.T) {
 	limiters := policy.NewRateLimiterSet([]snapshot.CompiledRateLimit{
-		{Limit: rate.Limit(0), Burst: 1},
+		{Limit: 0, Burst: 1},
 	})
 
-	route := &snapshot.CompiledRoute{Policies: snapshot.CompiledRoutePolicies{RateLimitID: policy.NoRateLimit}}
+	route := &snapshot.CompiledRoute{Policies: snapshot.CompiledRoutePolicies{RateLimitID: snapshot.NoRateLimit}}
 
 	for i := range 5 {
 		if !limiters.Allow(route) {

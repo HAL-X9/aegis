@@ -6,7 +6,6 @@ import (
 
 	"github.com/HAL-X9/aegis/internal/controlplane/ir"
 	"github.com/HAL-X9/aegis/internal/snapshot"
-	"golang.org/x/time/rate"
 )
 
 // RateLimits compiles the normalized IR rate-limit policies into a snapshot
@@ -28,7 +27,7 @@ func RateLimits(policies *ir.Policies) (*snapshot.CompiledRateLimits, error) {
 	for _, name := range names {
 		rl := policies.RateLimits[name]
 		compiledRateLimits = append(compiledRateLimits, snapshot.CompiledRateLimit{
-			Limit: rate.Limit(rl.Rate),
+			Limit: rl.Rate,
 			Burst: int(rl.Burst),
 		})
 	}

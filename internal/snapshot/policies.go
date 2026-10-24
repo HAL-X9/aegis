@@ -1,7 +1,5 @@
 package snapshot
 
-import "golang.org/x/time/rate"
-
 // HeaderOpCode is a compiled executable operation.
 //
 // Runtime executor should behave like a tiny VM:
@@ -68,7 +66,7 @@ type CompiledHeaders struct {
 // the bucket size. A route selects its policy by index through
 // CompiledRoutePolicies.RateLimitID.
 type CompiledRateLimit struct {
-	Limit rate.Limit
+	Limit float64
 	Burst int
 }
 

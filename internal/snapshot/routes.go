@@ -60,10 +60,17 @@ type HeaderPredicate struct {
 	AllowedValues []string
 }
 
+// NoRateLimit is the RateLimitID of a route without a rate-limit policy.
+const NoRateLimit int32 = -1
+
 // CompiledRoutePolicies holds the policies applied to a matched request.
 // Timeout and Retry are copied from the route's service.
 type CompiledRoutePolicies struct {
-	Headers     CompiledHeaders
+	Headers CompiledHeaders
+
+	// RateLimitID indexes CompiledConfig.RateLimits.Items, or is NoRateLimit.
+	// The zero value is a valid index (the first policy), so a route without a
+	// rate-limit policy must be set to NoRateLimit explicitly.
 	RateLimitID int32
 	Timeout     time.Duration
 	Retry       CompiledRetry

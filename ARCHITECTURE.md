@@ -180,7 +180,6 @@ The leaf layers (first five rows, plus `edge`) use an allow-list, so a new impor
 **Known violations.** Each is marked `TODO(arch)` in `.golangci.yml` and is allowed only until the step that removes it:
 
 - `dataplane/middleware` imports `observe/metrics`, and `edge` imports `dataplane/middleware`; the middleware belongs to the edge.
-- `snapshot` imports `golang.org/x/time/rate` because `CompiledRateLimit.Limit` is a `rate.Limit`.
 - Data plane tests use `controlplane/compile` to build snapshots.
 
 **Limits of the check.** `depguard` inspects direct imports only, which is sufficient here because every layer has a rule. A new top-level package under `internal/` is covered only by the rule that forbids importing `app`; give it a rule when you add it.

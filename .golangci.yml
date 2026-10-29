@@ -184,6 +184,7 @@ linters:
             - "**/internal/controlplane/ir/**"
             - "**/internal/dataplane/request/**"
             - "**/internal/dataplane/routelabel/**"
+            - "**/internal/dataplane/fault/**"
             - "!**/*_test.go"
           allow:
             - $gostd

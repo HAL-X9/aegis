@@ -134,15 +134,30 @@ route; in the example above, `GET /users/me` is served by route B.
 for each request. This table is the contract: the code must not add, remove,
 or reorder outcomes without updating this document in the same change.
 
+Every error response the gateway produces itself is identified by a reason of
+package `internal/dataplane/fault`, whose code is given in parentheses below.
+The reason fixes the status and the body, a problem document (RFC 9457) with
+`Content-Type: application/problem+json`, for example:
+
+```json
+{"type":"urn:aegis:problem:no-route","title":"No route matches the request","status":404}
+```
+
+The `type` URI and the code are stable; the `title` is informative only. Each
+such response is counted in `aegis_http_errors_total{reason="<code>"}` (when
+the metrics middleware is enabled), and the 5xx reasons are also logged with
+the route, path, request ID, and upstream error. An error status relayed from
+an upstream is neither counted there nor logged.
+
 | Status                      | Condition                                                                                                                                                                        | Notes                                                                                                                                                             |
 |-----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **503** Service Unavailable | No compiled view has been published (`view == nil`).                                                                                                                             | Startup failure; never a per-route condition.                                                                                                                     |
-| **400** Bad Request         | The request path has no canonical form: it contains an encoded slash (`%2F`) or does not begin with `/` (see 1.0).                                                              | Checked before route matching. Rejection of other octets is specified but not yet enforced (see 1.0).                                                             |
-| **405** Method Not Allowed  | (a) The request method is not a supported method (see `internal/httpmethod`); or (b) the path matched at least one route, but no matching candidate supports the request method. | Case (a) is checked before route matching. Case (b) is returned only when path matching succeeded. See 3 for the status code of case (a).                         |
-| **404** Not Found           | No route's path structure matches the request path; or a path and method matched, but no candidate's header predicates were satisfied.                                           | See 2.1 for why an unsatisfied header predicate yields 404.                                                                                                       |
-| **429** Too Many Requests   | A route matched (path, method, and headers), but its rate-limit policy rejected the request.                                                                                     | Checked before the first upstream attempt.                                                                                                                        |
-| **504** Gateway Timeout     | A service `timeout`, a `retries.attempt_timeout` on the last attempt, the listener `request_timeout`, or a transport dial or response-header timeout expired.                    | Retries are attempted first while the service `timeout` allows.                                                                                                   |
-| **502** Bad Gateway         | The upstream request failed for a reason other than a timeout.                                                                                                                   | Connection refused, connection reset, or protocol error.                                                                                                          |
+| **503** Service Unavailable (`not-ready`) | No compiled view has been published (`view == nil`).                                                                                                                             | Startup failure; never a per-route condition.                                                                                                                     |
+| **400** Bad Request (`invalid-path`) | The request path has no canonical form: it contains an encoded slash (`%2F`) or does not begin with `/` (see 1.0).                                                              | Checked before route matching. Rejection of other octets is specified but not yet enforced (see 1.0).                                                             |
+| **405** Method Not Allowed (`unsupported-method`, `method-not-allowed`) | (a) The request method is not a supported method (see `internal/httpmethod`); or (b) the path matched at least one route, but no matching candidate supports the request method. | Case (a) is checked before route matching. Case (b) is returned only when path matching succeeded. See 3 for the status code of case (a).                         |
+| **404** Not Found (`no-route`) | No route's path structure matches the request path; or a path and method matched, but no candidate's header predicates were satisfied.                                           | See 2.1 for why an unsatisfied header predicate yields 404.                                                                                                       |
+| **429** Too Many Requests (`rate-limited`) | A route matched (path, method, and headers), but its rate-limit policy rejected the request.                                                                                     | Checked before the first upstream attempt.                                                                                                                        |
+| **504** Gateway Timeout (`upstream-timeout`) | A service `timeout`, a `retries.attempt_timeout` on the last attempt, the listener `request_timeout`, or a transport dial or response-header timeout expired.                    | Retries are attempted first while the service `timeout` allows.                                                                                                   |
+| **502** Bad Gateway (`upstream-failed`) | The upstream request failed for a reason other than a timeout.                                                                                                                   | Connection refused, connection reset, or protocol error.                                                                                                          |
 | **200–5xx** (passthrough)   | The upstream responded.                                                                                                                                                          | Status, headers, and body are forwarded after hop-by-hop stripping and policy mutation. A 502, 503, or 504 response is passed through once retries are exhausted. |
 
 ### 2.1 Why a header mismatch is 404, not 405

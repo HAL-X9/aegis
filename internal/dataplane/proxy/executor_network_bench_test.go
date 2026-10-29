@@ -37,7 +37,7 @@ import (
 func newBenchExecutor(tb testing.TB, engine *router.Engine, transport http.RoundTripper) *Executor {
 	tb.Helper()
 
-	executor, err := NewExecutor(transport)
+	executor, err := NewExecutor(transport, nil)
 	if err != nil {
 		tb.Fatalf("NewExecutor: %v", err)
 	}

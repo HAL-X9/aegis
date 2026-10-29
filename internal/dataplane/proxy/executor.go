@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/HAL-X9/aegis/internal/dataplane/fault"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/request"
 	"github.com/HAL-X9/aegis/internal/dataplane/retry"
@@ -34,6 +35,9 @@ type Executor struct {
 	// for concurrent use — NewExecutor enforces this so ServeHTTP doesn't
 	// have to check it on every request.
 	transport http.RoundTripper
+
+	// observer receives every error response; never nil.
+	observer Observer
 }
 
 var copyBufferPool = sync.Pool{
@@ -52,16 +56,20 @@ type upstreamRequest struct {
 
 // NewExecutor creates an Executor bound to transport, which must be
 // non-nil and safe for concurrent use — that's a constructor invariant,
-// checked once here instead of on every request.
+// checked once here instead of on every request. observer receives every
+// error response the Executor produces; nil discards them.
 //
 // The returned Executor serves 503 for every request until Publish is
 // called at least once; call Publish with the initial View before handing
 // the Executor to a server.
-func NewExecutor(transport http.RoundTripper) (*Executor, error) {
+func NewExecutor(transport http.RoundTripper, observer Observer) (*Executor, error) {
 	if transport == nil {
 		return nil, fmt.Errorf("proxy: transport must not be nil")
 	}
-	return &Executor{transport: transport}, nil
+	if observer == nil {
+		observer = discardObserver{}
+	}
+	return &Executor{transport: transport, observer: observer}, nil
 }
 
 // Publish atomically swaps in a new View. Callers build the complete View
@@ -98,18 +106,21 @@ func newUpstreamRequest(ctx context.Context, view *View, r *http.Request, route 
 // proxies it to a matching upstream service.
 //
 // Outcomes, in the order they are decided (the contract is
-// docs/routing-and-errors.md §2; change both together):
-//   - 503 if no View has been published yet
-//   - 400 if the request path has no canonical form (see
+// docs/routing-and-errors.md §2; change both together). Each failure is
+// answered by fail with the problem document of its reason:
+//   - NotReady (503) if no View has been published yet
+//   - InvalidPath (400) if the request path has no canonical form (see
 //     request.CanonicalPath); otherwise the canonical path is both routed
 //     and forwarded (invariant I-001)
-//   - 405 if the request method is not a supported method
-//   - 404 if no route matches the path, or if some candidate allows the
-//     method but none satisfies its header predicates
-//   - 405 if candidates match the path but none allows the method
-//   - 429 if the matched route's rate-limit policy rejects the request
-//   - 504 if the upstream exchange times out (see isTimeout)
-//   - 502 if the upstream exchange fails for any other reason
+//   - UnsupportedMethod (405) if the request method is not a supported method
+//   - NoRoute (404) if no route matches the path, or if some candidate allows
+//     the method but none satisfies its header predicates
+//   - MethodNotAllowed (405) if candidates match the path but none allows the
+//     method
+//   - RateLimited (429) if the matched route's rate-limit policy rejects the
+//     request
+//   - UpstreamTimeout (504) if the upstream exchange times out (see isTimeout)
+//   - UpstreamFailed (502) if the upstream exchange fails for any other reason
 //   - otherwise the upstream response is passed through
 //
 // Idempotent, body-less requests are retried on transport errors and on
@@ -124,13 +135,13 @@ func newUpstreamRequest(ctx context.Context, view *View, r *http.Request, route 
 func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	view := executor.view.Load()
 	if view == nil {
-		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		executor.fail(w, r, Failure{Reason: fault.NotReady})
 		return
 	}
 
 	path, ok := request.CanonicalPath(r.URL)
 	if !ok {
-		http.Error(w, "bad request: invalid path", http.StatusBadRequest)
+		executor.fail(w, r, Failure{Reason: fault.InvalidPath})
 		return
 	}
 
@@ -139,17 +150,17 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// suggest 501 here; docs/routing-and-errors.md §3 records the open item.
 	methodBit, ok := httpmethod.Bit(r.Method)
 	if !ok {
-		http.Error(w, "unsupported HTTP method", http.StatusMethodNotAllowed)
+		executor.fail(w, r, Failure{Reason: fault.UnsupportedMethod})
 		return
 	}
 
 	matchedRoute, outcome := view.Engine.Resolve(path, methodBit, r.Header)
 	switch outcome {
 	case router.NotFound:
-		http.NotFound(w, r)
+		executor.fail(w, r, Failure{Reason: fault.NoRoute})
 		return
 	case router.MethodNotAllowed:
-		http.Error(w, "method not allowed for matched route", http.StatusMethodNotAllowed)
+		executor.fail(w, r, Failure{Reason: fault.MethodNotAllowed})
 		return
 	}
 
@@ -170,7 +181,7 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	routelabel.FromContext(r.Context()).SetRoutePattern(routeLabel)
 
 	if !view.Limiters.Allow(matchedRoute) {
-		http.Error(w, "too many requests", http.StatusTooManyRequests)
+		executor.fail(w, r, Failure{Reason: fault.RateLimited, Route: matchedRoute.Name})
 		return
 	}
 
@@ -195,11 +206,11 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Every retry attempt reuses req as prepared above.
 	resp, err := retry.Do(executor.transport, req, matchedRoute.Policies.Retry)
 	if err != nil {
+		reason := fault.UpstreamFailed
 		if isTimeout(err) {
-			http.Error(w, "gateway timeout: upstream did not respond in time", http.StatusGatewayTimeout)
-		} else {
-			http.Error(w, "bad gateway: upstream request failed", http.StatusBadGateway)
+			reason = fault.UpstreamTimeout
 		}
+		executor.fail(w, r, Failure{Reason: reason, Route: matchedRoute.Name, Cause: err})
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()

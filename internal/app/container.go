@@ -52,9 +52,17 @@ func Bootstrap(cfg *config.Runtime, manifest validate.Validated) (*Dependencies,
 
 	rateLimiters := policy.NewRateLimiterSet(compiled.RateLimits.Items)
 
+	// The HTTP metrics collector exists only when its middleware is enabled,
+	// so a disabled gateway registers no aegis_http_* series. The system
+	// listener's /metrics endpoint is independent of this switch.
+	var metricsCollector *metrics.Metrics
+	if cfg.Middleware.Metrics {
+		metricsCollector = metrics.NewMetrics(prometheus.DefaultRegisterer)
+	}
+
 	upstreamTransport := newUpstreamTransport(&cfg.UpstreamTransport)
 
-	executor, err := proxy.NewExecutor(upstreamTransport)
+	executor, err := proxy.NewExecutor(upstreamTransport, failureReporter{metrics: metricsCollector})
 	if err != nil {
 		return nil, fmt.Errorf("build proxy executor: %w", err)
 	}
@@ -63,14 +71,6 @@ func Bootstrap(cfg *config.Runtime, manifest validate.Validated) (*Dependencies,
 		Engine:   engine,
 		Limiters: rateLimiters,
 	})
-
-	// The HTTP metrics collector exists only when its middleware is enabled,
-	// so a disabled gateway registers no aegis_http_* series. The system
-	// listener's /metrics endpoint is independent of this switch.
-	var metricsCollector *metrics.Metrics
-	if cfg.Middleware.Metrics {
-		metricsCollector = metrics.NewMetrics(prometheus.DefaultRegisterer)
-	}
 
 	healthSvc := health.NewHealth()
 

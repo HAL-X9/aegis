@@ -92,7 +92,7 @@ func newTestExecutor(
 ) *Executor {
 	t.Helper()
 
-	exec, err := NewExecutor(transport)
+	exec, err := NewExecutor(transport, nil)
 	if err != nil {
 		t.Fatalf("NewExecutor failed: %v", err)
 	}
@@ -107,7 +107,7 @@ func newTestExecutor(
 
 func TestNewExecutor(t *testing.T) {
 	t.Run("rejects nil transport", func(t *testing.T) {
-		exec, err := NewExecutor(nil)
+		exec, err := NewExecutor(nil, nil)
 
 		if err == nil {
 			t.Fatal("expected error for nil transport")
@@ -123,7 +123,7 @@ func TestNewExecutor(t *testing.T) {
 			return nil, errors.New("not called")
 		})
 
-		exec, err := NewExecutor(transport)
+		exec, err := NewExecutor(transport, nil)
 		if err != nil {
 			t.Fatalf("NewExecutor failed: %v", err)
 		}
@@ -138,7 +138,7 @@ func TestExecutor(t *testing.T) {
 	t.Run("returns 503 before a view is published", func(t *testing.T) {
 		exec, err := NewExecutor(roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
-		}))
+		}), nil)
 		if err != nil {
 			t.Fatalf("NewExecutor failed: %v", err)
 		}

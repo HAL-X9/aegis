@@ -191,7 +191,8 @@ The metrics middleware records only the request method and the response
 status; the series `aegis_http_requests_total` and
 `aegis_http_request_duration_seconds` carry no route label. Wiring the
 recorder into the middleware is listed in the roadmap of
-[ARCHITECTURE.md](../ARCHITECTURE.md).
+[ARCHITECTURE.md](../ARCHITECTURE.md). A method the gateway does not support
+is recorded as `_OTHER`, so that clients cannot create series of their own.
 
 ## 3. Open items
 

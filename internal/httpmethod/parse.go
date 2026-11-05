@@ -36,7 +36,8 @@ func MaskOf(methods []string) (Mask, error) {
 // case-sensitive, as HTTP method names are.
 //
 // Bit is used both by configuration validation and, on the request path, by
-// the executor to classify the incoming method.
+// the executor to classify the incoming method and by the metrics middleware
+// to bound the method label.
 func Bit(method string) (Mask, bool) {
 	switch method {
 	case "GET":

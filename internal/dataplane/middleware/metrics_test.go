@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -126,5 +127,50 @@ func TestMetricsRecorderIsResetBetweenRequests(t *testing.T) {
 	}
 	if got := requestCount(t, reg, http.MethodGet, "200"); got != 1 {
 		t.Errorf("status 200 count = %v, want 1 (a pooled recorder kept the previous status)", got)
+	}
+}
+
+func TestMetricsMethodLabel(t *testing.T) {
+	tests := map[string]string{
+		http.MethodGet:     http.MethodGet,
+		http.MethodPost:    http.MethodPost,
+		http.MethodPut:     http.MethodPut,
+		http.MethodDelete:  http.MethodDelete,
+		http.MethodPatch:   http.MethodPatch,
+		http.MethodOptions: http.MethodOptions,
+		http.MethodHead:    http.MethodHead,
+		"PROPFIND":         otherMethod,
+		"get":              otherMethod,
+	}
+
+	for method, wantLabel := range tests {
+		t.Run(method, func(t *testing.T) {
+			reg := serveWithMetrics(t, method, func(http.ResponseWriter, *http.Request) {})
+
+			if got := requestCount(t, reg, wantLabel, "200"); got != 1 {
+				t.Fatalf("aegis_http_requests_total{method=%q,status=\"200\"} = %v, want 1", wantLabel, got)
+			}
+		})
+	}
+}
+
+// TestMetricsMethodLabelIsBounded guards against series created by clients:
+// the method is chosen by the client, so every unsupported method must share
+// one label value.
+func TestMetricsMethodLabelIsBounded(t *testing.T) {
+	const requests = 100
+
+	reg := prometheus.NewRegistry()
+	chain := NewMetricsMiddleware(metrics.NewMetrics(reg)).Metrics(
+		http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
+	)
+
+	for i := range requests {
+		method := fmt.Sprintf("METHOD%d", i)
+		chain.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(method, "/", nil))
+	}
+
+	if got := requestCount(t, reg, otherMethod, "200"); got != requests {
+		t.Fatalf("aegis_http_requests_total{method=%q,status=\"200\"} = %v, want %d", otherMethod, got, requests)
 	}
 }

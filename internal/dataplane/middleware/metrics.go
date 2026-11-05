@@ -5,8 +5,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/HAL-X9/aegis/internal/httpmethod"
 	"github.com/HAL-X9/aegis/internal/observe/metrics"
 )
+
+// otherMethod is the method label of every request whose method the gateway
+// does not support. The client chooses the method, and each distinct label
+// value creates series that live as long as the process, so the raw method
+// would let any client exhaust the gateway's memory.
+const otherMethod = "_OTHER"
 
 // statusRecorder remembers the first status code written to the response. A
 // handler that never calls WriteHeader is reported as 200, matching net/http.
@@ -63,9 +70,18 @@ func (m *MetricsMiddleware) Metrics(next http.Handler) http.Handler {
 		elapsed := time.Since(start)
 
 		m.metrics.RecordHTTPRequest(
-			r.Method,
+			methodLabel(r.Method),
 			rec.status,
 			elapsed,
 		)
 	})
+}
+
+// methodLabel returns method if the gateway supports it, and otherMethod
+// otherwise.
+func methodLabel(method string) string {
+	if _, ok := httpmethod.Bit(method); ok {
+		return method
+	}
+	return otherMethod
 }

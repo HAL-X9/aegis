@@ -83,6 +83,8 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 }
 
 // RecordHTTPRequest counts one finished request and observes its duration.
+// The caller must draw method from a closed set, since every distinct value
+// creates series that live as long as the process.
 func (m *Metrics) RecordHTTPRequest(method string, statusCode int, duration time.Duration) {
 	m.HTTPRequestTotal.WithLabelValues(method, strconv.Itoa(statusCode)).Inc()
 	m.HTTPRequestDuration.WithLabelValues(method).Observe(duration.Seconds())

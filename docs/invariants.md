@@ -193,15 +193,21 @@ upstream or the client side.
 `Proxy-Authorization`, `Proxy-Connection`, `TE`, `Trailer`,
 `Transfer-Encoding` and `Upgrade`, and any header named in
 `Connection`, are removed from the request sent upstream and from the
-response sent to the client.
+response sent to the client. A `Connection` token sent by the client
+cannot remove a header the gateway sets: `X-Forwarded-*`, a header set
+by request policy, or `X-Request-Id`. `X-Request-Id` is exempt from
+token removal even when the `RequestID` layer is disabled.
 
-**Enforcement.** Implemented. `request/hopbyhop.go`, called after
-policy on the request and after policy on the response in
+**Enforcement.** Implemented. `request/hopbyhop.go`, called on the
+client's headers in `request.UpstreamHeader` before the gateway sets its
+own, after policy on the request and after policy on the response in
 `proxy/executor.go`.
 
-**Verification.** Planned: a direct test of `RemoveHopHeaders` with a
-`Connection`-named header. The existing `header_test.go` covers
-`UpstreamHeader`, not this function.
+**Verification.** `request/hopbyhop_test.go` tests `RemoveHopHeaders`
+with a `Connection`-named header. `request/header_test.go` tests that
+client tokens cannot remove `X-Forwarded-*` or `X-Request-Id`.
+`proxy/executor_connection_test.go` covers the policy-set case through
+the executor.
 
 ### I-010 Client-supplied forwarding identity is not trusted
 

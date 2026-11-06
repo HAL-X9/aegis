@@ -18,6 +18,11 @@ var forwardedHeaders = [...]string{"X-Forwarded-For", "X-Forwarded-Proto", "X-Fo
 // can carry the same information (Forwarded, X-Real-IP, X-Original-URL, ...)
 // are copied unchanged.
 //
+// The client's hop-by-hop headers, including those it names in Connection, are
+// removed before the gateway's own headers are set, so a Connection token
+// cannot delete a forwarded header, a policy-set header or X-Request-Id, which
+// the RequestID middleware sets in r.Header (invariant I-009).
+//
 // The copy is built in one pass with a single map and a single backing
 // array for all values, including the forwarded ones.
 func UpstreamHeader(r *http.Request) http.Header {
@@ -38,6 +43,12 @@ func UpstreamHeader(r *http.Request) http.Header {
 		c := copy(backing, vv)
 		h[name] = backing[:c:c]
 		backing = backing[c:]
+	}
+
+	requestID := h["X-Request-Id"]
+	RemoveHopHeaders(h)
+	if requestID != nil {
+		h["X-Request-Id"] = requestID
 	}
 
 	set := func(name, value string) {

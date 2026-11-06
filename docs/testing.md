@@ -53,7 +53,7 @@ The tests are organized in three layers, supplemented by fuzz targets and benchm
 |-------------|----------------------------------------|--------------------------------------------------------------------------|---------------|
 | Unit        | `internal/**/*_test.go`                | the internal logic of one package                                        | 123 tests      |
 | Integration | `tests/integration/`                   | policies through the exported interfaces of the packages                 | 4 tests       |
-| End-to-end  | `tests/e2e/`                           | the complete path from YAML to the HTTP response                         | 7 tests       |
+| End-to-end  | `tests/e2e/`                           | the complete path from YAML to the HTTP response                         | 8 tests       |
 | Fuzz        | `internal/**/*_test.go` (`Fuzz*`)      | properties of path handling and routing on generated input (Section 4.2) | 5 targets     |
 | Benchmarks  | `internal/**/*_test.go` (`Benchmark*`) | the cost of the hot path (Section 7)                                     | 17 benchmarks |
 
@@ -164,17 +164,8 @@ The upstream is represented by an `httptest` server that records the headers it 
 | `TestGateway_MethodNotAllowed`                          | a method not permitted by the route                                        | `405`                                                              |
 | `TestGateway_UnknownRouteReturnsNotFound`               | a path outside the route table                                             | `404`                                                              |
 | `TestGateway_SystemListenerReportsLiveness`             | `GET /livez` on the system handler                                         | `200`                                                              |
+| `TestGateway_SystemListenerServesMetrics`               | a proxied request, then `GET /metrics` on the system handler               | the request is counted once; Go and process metrics are present    |
 | `TestGateway_ServiceTimeoutReturnsGatewayTimeout`       | `GET /api/v1/profile/slow`; the upstream does not respond; timeout `200ms` | `504`                                                              |
-
-### 6.1 Global metrics registry
-
-`app.Bootstrap` registers the HTTP metrics with `prometheus.DefaultRegisterer` whenever `middleware.metrics` is enabled, which is the default. Registering the same names a second time causes a panic. For this reason, `bootstrapTestGateway` replaces the registry before each invocation:
-
-```go
-prometheus.DefaultRegisterer = prometheus.NewRegistry()
-```
-
-Any test added to this package MUST perform the same substitution. Omitting it causes a panic that occurs only on the second invocation of `Bootstrap` within a single process.
 
 ---
 
@@ -344,7 +335,7 @@ The stand-in listens on a single port. The service `order-service` refers to por
 - **Helpers.** Helper functions call `t.Helper()`. Temporary files are created with `t.TempDir()`, and resources are released with `t.Cleanup`.
 - **Network tests.** These use `httptest.NewServer` and addresses of the form `:0`, so that they do not conflict with ports in use.
 - **Assertions.** Tests compare status codes and response bodies, not the text of internal errors.
-- **Side effects.** Global state, such as the metrics registry, is replaced for the duration of a test (Section 6.1).
+- **Side effects.** Global state, such as the output of the standard logger, is replaced for the duration of a test and restored with `t.Cleanup`.
 
 ---
 

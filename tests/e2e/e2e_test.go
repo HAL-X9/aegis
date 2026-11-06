@@ -18,12 +18,12 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/HAL-X9/aegis/internal/app"
 	"github.com/HAL-X9/aegis/internal/config"
 	"github.com/HAL-X9/aegis/internal/controlplane/loader"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // newMockUpstream starts a real HTTP server standing in for a proxied
@@ -169,8 +169,6 @@ policies:
 	if err != nil {
 		t.Fatalf("loader.Load: %v", err)
 	}
-
-	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
 	deps, err := app.Bootstrap(runtimeConfig, gatewayConfig)
 	if err != nil {
@@ -339,6 +337,46 @@ func TestGateway_SystemListenerReportsLiveness(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+}
+
+// TestGateway_SystemListenerServesMetrics verifies that a request through the
+// public listener is visible on the system listener. The exact count also
+// proves that each Bootstrap records into a registry of its own.
+func TestGateway_SystemListenerServesMetrics(t *testing.T) {
+	upstream, _ := newMockUpstream(t)
+	deps := bootstrapTestGateway(t, upstream)
+
+	gw := httptest.NewServer(deps.PublicHTTP.Handler)
+	t.Cleanup(gw.Close)
+	sys := httptest.NewServer(deps.SystemHTTP.Handler)
+	t.Cleanup(sys.Close)
+
+	proxied, err := http.Get(gw.URL + "/api/v1/profile")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	_ = proxied.Body.Close()
+
+	resp, err := http.Get(sys.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+
+	for _, want := range []string{
+		`aegis_http_requests_total{method="GET",status="200"} 1`,
+		"go_goroutines",
+		"process_start_time_seconds",
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("/metrics does not contain %q", want)
+		}
 	}
 }
 

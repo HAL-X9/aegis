@@ -19,6 +19,7 @@ import (
 	"github.com/HAL-X9/aegis/internal/observe/health"
 	"github.com/HAL-X9/aegis/internal/observe/metrics"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -52,12 +53,19 @@ func Bootstrap(cfg *config.Runtime, manifest validate.Validated) (*Dependencies,
 
 	rateLimiters := policy.NewRateLimiterSet(compiled.RateLimits.Items)
 
-	// The HTTP metrics collector exists only when its middleware is enabled,
-	// so a disabled gateway registers no aegis_http_* series. The system
-	// listener's /metrics endpoint is independent of this switch.
+	// The system listener's /metrics endpoint serves this registry and always
+	// carries the Go runtime and process collectors. The HTTP metrics collector
+	// exists only when its middleware is enabled, so a disabled gateway
+	// registers no aegis_http_* series.
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+	)
+
 	var metricsCollector *metrics.Metrics
 	if cfg.Middleware.Metrics {
-		metricsCollector = metrics.NewMetrics(prometheus.DefaultRegisterer)
+		metricsCollector = metrics.NewMetrics(registry)
 	}
 
 	upstreamTransport := newUpstreamTransport(&cfg.UpstreamTransport)
@@ -74,7 +82,8 @@ func Bootstrap(cfg *config.Runtime, manifest validate.Validated) (*Dependencies,
 
 	healthSvc := health.NewHealth()
 
-	systemHandler := edgeadmin.NewRouter(edgeadmin.NewSystemHandler(healthSvc, promhttp.Handler()))
+	metricsHandler := promhttp.InstrumentMetricHandler(registry, promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+	systemHandler := edgeadmin.NewRouter(edgeadmin.NewSystemHandler(healthSvc, metricsHandler))
 	systemHTTP, err := newHTTPServer(cfg.Listeners.System, systemHandler)
 	if err != nil {
 		return nil, fmt.Errorf("build system HTTP server: %w", err)

@@ -106,3 +106,33 @@ func BenchmarkUpstreamHeader(b *testing.B) {
 		headerSink = UpstreamHeader(r)
 	}
 }
+
+func TestUpstreamHeaderIgnoresClientConnectionTokensForGatewayHeaders(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "http://gateway.local/", nil)
+	r.RemoteAddr = "203.0.113.7:51234"
+	r.Header.Set("Connection", "x-forwarded-for, X-Forwarded-Proto, X-Forwarded-Host, x-request-id, X-Secret")
+	r.Header.Set("X-Request-Id", "id")
+	r.Header.Set("X-Secret", "dropped")
+
+	h := UpstreamHeader(r)
+
+	want := map[string]string{
+		"X-Forwarded-For":   "203.0.113.7",
+		"X-Forwarded-Proto": "http",
+		"X-Forwarded-Host":  "gateway.local",
+		"X-Request-Id":      "id",
+	}
+	for name, value := range want {
+		if got := h.Get(name); got != value {
+			t.Errorf("%s = %q, want %q", name, got, value)
+		}
+	}
+	for _, name := range []string{"Connection", "X-Secret"} {
+		if _, ok := h[name]; ok {
+			t.Errorf("%s was forwarded: %q", name, h[name])
+		}
+	}
+	if r.Header.Get("Connection") == "" {
+		t.Error("the inbound request header was modified")
+	}
+}

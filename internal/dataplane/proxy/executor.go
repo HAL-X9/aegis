@@ -199,8 +199,9 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	policy.ExecuteMutations(req.Header, &matchedRoute.Policies.Headers.Request, headerNames)
 
-	// Hop-by-hop headers must never reach the upstream, regardless of
-	// whether they came from the client, a forwarding helper, or a policy.
+	// The client's hop-by-hop headers are already gone (see
+	// request.UpstreamHeader); this removes those a policy introduced, so a
+	// client's Connection tokens never reach the gateway's own headers.
 	request.RemoveHopHeaders(req.Header)
 
 	// Every retry attempt reuses req as prepared above.

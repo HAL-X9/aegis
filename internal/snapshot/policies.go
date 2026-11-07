@@ -62,8 +62,8 @@ type CompiledHeaders struct {
 }
 
 // CompiledRateLimit is the runtime definition of one rate-limit policy, a
-// token bucket: Limit is the sustained rate in requests per second and Burst
-// the bucket size. A route selects its policy by index through
+// token bucket for each client: Limit is the sustained rate in requests per
+// second and Burst the bucket size. A route selects its policy by index through
 // CompiledRoutePolicies.RateLimitID.
 type CompiledRateLimit struct {
 	Limit float64

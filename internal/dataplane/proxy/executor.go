@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"sync"
 	"sync/atomic"
@@ -118,7 +119,7 @@ func newUpstreamRequest(ctx context.Context, view *View, r *http.Request, route 
 //   - MethodNotAllowed (405) if candidates match the path but none allows the
 //     method
 //   - RateLimited (429) if the matched route's rate-limit policy rejects the
-//     request
+//     client, identified by the address of the connection's peer
 //   - UpstreamTimeout (504) if the upstream exchange times out (see isTimeout)
 //   - UpstreamFailed (502) if the upstream exchange fails for any other reason
 //   - otherwise the upstream response is passed through
@@ -180,7 +181,10 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	routelabel.FromContext(r.Context()).SetRoutePattern(routeLabel)
 
-	if !view.Limiters.Allow(matchedRoute) {
+	// A RemoteAddr that is not an address and port leaves the zero Addr, which
+	// RateLimiterSet.Allow treats as one shared client.
+	client, _ := netip.ParseAddrPort(r.RemoteAddr)
+	if !view.Limiters.Allow(matchedRoute, client.Addr()) {
 		executor.fail(w, r, Failure{Reason: fault.RateLimited, Route: matchedRoute.Name})
 		return
 	}

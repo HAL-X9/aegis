@@ -2,6 +2,7 @@ package integration
 
 import (
 	"net/http"
+	"net/netip"
 	"testing"
 
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
@@ -60,11 +61,12 @@ func TestRateLimiterSet_EnforcesBurstThenRejects(t *testing.T) {
 	})
 
 	route := &snapshot.CompiledRoute{Policies: snapshot.CompiledRoutePolicies{RateLimitID: 0}}
+	client := netip.MustParseAddr("192.0.2.1")
 
-	if !limiters.Allow(route) {
+	if !limiters.Allow(route, client) {
 		t.Fatal("first request should be allowed within burst")
 	}
-	if limiters.Allow(route) {
+	if limiters.Allow(route, client) {
 		t.Fatal("second request should be rejected: burst exhausted, no refill")
 	}
 }
@@ -79,7 +81,7 @@ func TestRateLimiterSet_NoRateLimitAlwaysAllows(t *testing.T) {
 	route := &snapshot.CompiledRoute{Policies: snapshot.CompiledRoutePolicies{RateLimitID: snapshot.NoRateLimit}}
 
 	for i := range 5 {
-		if !limiters.Allow(route) {
+		if !limiters.Allow(route, netip.MustParseAddr("192.0.2.1")) {
 			t.Fatalf("request %d: want allowed, route has no rate limit attached", i)
 		}
 	}

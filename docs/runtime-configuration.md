@@ -255,7 +255,7 @@ The fields in this section are present in the schema and in [configs/aegis.yaml]
 
 ### 6.1 `proxy.trusted_proxies`
 
-The field is decoded into `config.Proxy` ([types.go](../internal/config/types.go)) but is read nowhere. The `X-Forwarded-For` header is derived from the address of the connection (`RemoteAddr`) and **always replaces** any value supplied by the client ([header.go](../internal/dataplane/request/header.go)). The list of trusted proxies is neither checked nor validated as CIDR notation.
+The field is decoded into `config.Proxy` ([types.go](../internal/config/types.go)) but is read nowhere. The `X-Forwarded-For` header is derived from the address of the connection (`RemoteAddr`) and **always replaces** any value supplied by the client ([header.go](../internal/dataplane/request/header.go)). Rate limits likewise identify the client by `RemoteAddr`, so behind a proxy or load balancer every client shares one bucket ([configuration.md](configuration.md#rate_limits)). The list of trusted proxies is neither checked nor validated as CIDR notation.
 
 The field will become meaningful once a trusted-address chain is implemented. Until then, it SHOULD either be removed from the file or accompanied by a comment stating that it has no effect.
 

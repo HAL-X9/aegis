@@ -105,6 +105,45 @@ func newTestExecutor(
 	return exec
 }
 
+// TestExecutorRateLimitsEachClient checks that the executor identifies the
+// client by the address of the connection's peer, ignoring its port.
+func TestExecutorRateLimitsEachClient(t *testing.T) {
+	engine := buildTestEngine(t, testConfig(snapshot.CompiledRoute{
+		Name:     "limited",
+		Match:    snapshot.CompiledMatch{PathPrefix: "/", Methods: httpmethod.All},
+		Policies: snapshot.CompiledRoutePolicies{RateLimitID: 0},
+	}))
+	exec, err := NewExecutor(roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: http.NoBody}, nil
+	}), nil)
+	if err != nil {
+		t.Fatalf("NewExecutor failed: %v", err)
+	}
+	exec.Publish(&View{
+		Engine:   engine,
+		Limiters: policy.NewRateLimiterSet([]snapshot.CompiledRateLimit{{Limit: 0, Burst: 1}}),
+	})
+
+	for _, step := range []struct {
+		remoteAddr string
+		want       int
+	}{
+		{remoteAddr: "192.0.2.1:1000", want: http.StatusOK},
+		{remoteAddr: "192.0.2.1:2000", want: http.StatusTooManyRequests},
+		{remoteAddr: "192.0.2.2:1000", want: http.StatusOK},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.RemoteAddr = step.remoteAddr
+		rec := httptest.NewRecorder()
+
+		exec.ServeHTTP(rec, req)
+
+		if rec.Code != step.want {
+			t.Errorf("request from %s: status = %d, want %d", step.remoteAddr, rec.Code, step.want)
+		}
+	}
+}
+
 func TestNewExecutor(t *testing.T) {
 	t.Run("rejects nil transport", func(t *testing.T) {
 		exec, err := NewExecutor(nil, nil)

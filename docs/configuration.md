@@ -236,6 +236,16 @@ policies:
 
 `rate` must be a finite number greater than zero, and `burst` must be at least 1; otherwise validation rejects the configuration.
 
+The limit applies to each client separately: every client has a bucket of its own, so a client that exhausts its bucket does not affect any other. A client's bucket is shared by every route that references the policy. The client is identified by the address of the connection:
+
+- an IPv4 client by its address, and an IPv4-mapped IPv6 address as the IPv4 address it carries;
+- an IPv6 client by its `/64` prefix, since a subscriber is commonly assigned a whole `/64` and could otherwise obtain a new bucket from each of its addresses;
+- the port is ignored.
+
+The address of the connection is that of the nearest peer. Behind a proxy or load balancer, every client therefore shares the proxy's bucket; identifying the original client requires `proxy.trusted_proxies`, which is not yet applied ([runtime-configuration.md](runtime-configuration.md), Section 6.1).
+
+The gateway forgets a client once its bucket is full again, which a client reaches at most `burst / rate` seconds after its last request. Forgetting such a client changes no decision, since a full bucket admits exactly what a new one would. Memory therefore grows with the number of clients seen within that interval, not with the number of clients over the lifetime of the process.
+
 A route with no rate-limiting policy attached is served without any restriction — this is a deliberately chosen default behavior, not a side effect of missing configuration.
 
 ## Complete configuration example

@@ -7,134 +7,100 @@ import (
 	"time"
 )
 
-// Validate checks cfg for well-formed listen addresses, timeout ordering, and allowed enum values.
-// cfg must not be nil.
+// Validate checks cfg for well-formed listen addresses, timeout ordering, and
+// allowed enum values. It reports every violation at once, each prefixed with
+// the YAML path of the offending field, joined with errors.Join.
+//
+// A rule that relates two fields runs only when both fields pass their own
+// checks, so one bad value never produces a second, derived error.
 func Validate(cfg *Runtime) error {
 	if cfg == nil {
-		return fmt.Errorf("validate runtime config: config is nil")
+		return errors.New("config is nil")
 	}
 
-	if err := validateListeners(&cfg.Listeners); err != nil {
-		return fmt.Errorf("failed to validate listeners config: %w", err)
-	}
+	var errs fieldErrors
+	validateHTTP(&errs, "listeners.public", &cfg.Listeners.Public)
+	validateHTTP(&errs, "listeners.system", &cfg.Listeners.System)
+	validateUpstreamTransport(&errs, "upstream_transport", &cfg.UpstreamTransport)
+	validateLogging(&errs, "observability.logging", &cfg.Observability.Logging)
 
-	if err := validateUpstreamTransport(&cfg.UpstreamTransport); err != nil {
-		return fmt.Errorf("failed validate upstream transport config: %w", err)
-	}
-
-	if err := validateLogging(&cfg.Observability.Logging); err != nil {
-		return fmt.Errorf("failed validate logging config: %w", err)
-	}
-
-	return nil
+	return errors.Join(errs...)
 }
 
-// validateListeners checks listener configs for nil values and invalid HTTP settings.
-func validateListeners(listeners *Listeners) error {
-	if listeners == nil {
-		return fmt.Errorf("listeners: configuration is nil")
-	}
+// fieldErrors collects rule violations, each bound to a YAML field path.
+type fieldErrors []error
 
-	if err := validateHTTP(&listeners.Public); err != nil {
-		return fmt.Errorf("listeners.public: %w", err)
-	}
-
-	if err := validateHTTP(&listeners.System); err != nil {
-		return fmt.Errorf("listeners.system: %w", err)
-	}
-
-	return nil
+func (e *fieldErrors) add(path, format string, args ...any) {
+	*e = append(*e, fmt.Errorf("%s: %s", path, fmt.Sprintf(format, args...)))
 }
 
 // validateHTTP enforces HTTP server field constraints used at listen time.
-func validateHTTP(cfg *HTTP) error {
-	if cfg == nil {
-		return fmt.Errorf("http: configuration is nil")
-	}
-
+func validateHTTP(errs *fieldErrors, path string, cfg *HTTP) {
 	if _, _, err := net.SplitHostPort(cfg.Addr); err != nil {
-		return fmt.Errorf("invalid addr: %w", err)
+		errs.add(path+".addr", "%v", err)
 	}
 
-	if cfg.Timeouts.ReadTimeout < time.Millisecond {
-		return fmt.Errorf("read_timeout must be at least 1ms")
+	t := cfg.Timeouts
+	readOK := t.ReadTimeout >= time.Millisecond
+	if !readOK {
+		errs.add(path+".timeouts.read_timeout", "must be at least 1ms")
 	}
-
-	if cfg.Timeouts.ReadHeaderTimeout > cfg.Timeouts.ReadTimeout {
-		return fmt.Errorf("read_header_timeout cannot exceed read_timeout")
+	if readOK && t.ReadHeaderTimeout > t.ReadTimeout {
+		errs.add(path+".timeouts.read_header_timeout", "cannot exceed read_timeout")
 	}
-
-	if cfg.Timeouts.WriteTimeout < 0 {
-		return fmt.Errorf("write_timeout cannot be negative")
+	if t.WriteTimeout < 0 {
+		errs.add(path+".timeouts.write_timeout", "cannot be negative")
 	}
 
 	if cfg.MaxHeaderBytes < 0 {
-		return fmt.Errorf("max_header_bytes cannot be negative")
+		errs.add(path+".max_header_bytes", "cannot be negative")
 	}
 
-	if err := validateTLS(cfg.TLS); err != nil {
-		return fmt.Errorf("tls: %w", err)
+	if cfg.TLS != nil {
+		if cfg.TLS.CertFile == "" {
+			errs.add(path+".tls.cert_file", "is required")
+		}
+		if cfg.TLS.KeyFile == "" {
+			errs.add(path+".tls.key_file", "is required")
+		}
 	}
-
-	return nil
 }
 
-func validateTLS(cfg *TLSConfig) error {
-	if cfg == nil {
-		return nil
-	}
-
-	if cfg.CertFile == "" {
-		return errors.New("tls: cert_file is required")
-	}
-
-	if cfg.KeyFile == "" {
-		return errors.New("tls: key_file is required")
-	}
-
-	return nil
-}
-
-// validateUpstreamTransport enforces non-negative limits and internal consistency of connection pool settings for outbound HTTP transport.
-func validateUpstreamTransport(cfg *UpstreamTransport) error {
+// validateUpstreamTransport enforces non-negative limits and internal
+// consistency of connection pool settings for outbound HTTP transport.
+func validateUpstreamTransport(errs *fieldErrors, path string, cfg *UpstreamTransport) {
 	if cfg.MaxIdleConns < 0 {
-		return fmt.Errorf("max_idle_conns must be >= 0")
+		errs.add(path+".max_idle_conns", "must be >= 0")
 	}
 
 	// Zero is rejected rather than passed through: net/http treats it as 2,
 	// which forces a new upstream connection for most concurrent requests.
 	if cfg.MaxIdleConnsPerHost < 1 {
-		return fmt.Errorf("max_idle_conns_per_host must be >= 1")
+		errs.add(path+".max_idle_conns_per_host", "must be >= 1")
 	}
-
 	if cfg.MaxConnsPerHost < 0 {
-		return fmt.Errorf("max_conns_per_host must be >= 0")
+		errs.add(path+".max_conns_per_host", "must be >= 0")
 	}
 
+	// A positive max_conns_per_host is itself valid, and max_idle_conns_per_host
+	// below 1 cannot exceed it, so this rule never repeats an error above.
+	// Zero means no limit.
 	if cfg.MaxConnsPerHost > 0 && cfg.MaxIdleConnsPerHost > cfg.MaxConnsPerHost {
-		return fmt.Errorf("max_idle_conns_per_host cannot exceed max_conns_per_host")
+		errs.add(path+".max_idle_conns_per_host", "cannot exceed max_conns_per_host")
 	}
-
-	return nil
 }
 
 // validateLogging enforces logging level and format literals accepted by the logger wiring.
-func validateLogging(cfg *Logging) error {
-	if cfg == nil {
-		return fmt.Errorf("logging: configuration is nil")
-	}
-
+func validateLogging(errs *fieldErrors, path string, cfg *Logging) {
 	switch cfg.Level {
 	case "debug", "info", "warn", "error", "dpanic", "panic", "fatal":
 	default:
-		return fmt.Errorf("logging_config.level must be one of: debug, info, warn, error, dpanic, panic, fatal")
+		errs.add(path+".level", "must be one of: debug, info, warn, error, dpanic, panic, fatal; got %q", cfg.Level)
 	}
 
 	switch cfg.Format {
 	case "json", "console":
 	default:
-		return fmt.Errorf("logging_config.format must be %q or %q", "json", "console")
+		errs.add(path+".format", "must be %q or %q; got %q", "json", "console", cfg.Format)
 	}
-
-	return nil
 }

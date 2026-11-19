@@ -18,7 +18,6 @@ import (
 	"github.com/HAL-X9/aegis/internal/dataplane/routelabel"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
 	"github.com/HAL-X9/aegis/internal/httpmethod"
-	"github.com/HAL-X9/aegis/internal/snapshot"
 )
 
 // Executor implements an HTTP reverse proxy handler backed by a routing engine.
@@ -82,11 +81,11 @@ func (executor *Executor) Publish(v *View) {
 }
 
 // newUpstreamRequest returns a shallow copy of r with context ctx, addressed
-// to route's upstream, with the canonical path, r's query, and a header
-// built by request.UpstreamHeader. It keeps r's body, sets Host to the
-// upstream host, and clears RequestURI, which client requests must not set.
-func newUpstreamRequest(ctx context.Context, view *View, r *http.Request, route *snapshot.CompiledRoute, path string) *http.Request {
-	out := &upstreamRequest{url: *view.Engine.UpstreamURL(route)}
+// to target, with the canonical path, r's query, and a header built by
+// request.UpstreamHeader. It keeps r's body, sets Host to the target host,
+// and clears RequestURI, which client requests must not set.
+func newUpstreamRequest(ctx context.Context, r *http.Request, target *url.URL, path string) *http.Request {
+	out := &upstreamRequest{url: *target}
 	out.url.Path = path
 	if path == r.URL.Path {
 		// RawPath describes only the original path; a canonicalized path is
@@ -100,6 +99,18 @@ func newUpstreamRequest(ctx context.Context, view *View, r *http.Request, route 
 	out.req.Host = out.url.Host
 	out.req.Header = request.UpstreamHeader(r)
 	out.req.RequestURI = ""
+	return &out.req
+}
+
+// retarget returns a shallow copy of req addressed to target. A repeated try
+// gets its own request instead of modifying req, because the transport may
+// still be reading req after the try that sent it has failed.
+func retarget(req *http.Request, target *url.URL) *http.Request {
+	out := &upstreamRequest{req: *req, url: *req.URL}
+	out.url.Scheme = target.Scheme
+	out.url.Host = target.Host
+	out.req.URL = &out.url
+	out.req.Host = target.Host
 	return &out.req
 }
 
@@ -124,10 +135,12 @@ func newUpstreamRequest(ctx context.Context, view *View, r *http.Request, route 
 //   - UpstreamFailed (502) if the upstream exchange fails for any other reason
 //   - otherwise the upstream response is passed through
 //
+// The service's targets are taken in turn (see internal/dataplane/balance).
 // Idempotent, body-less requests are retried on transport errors and on
 // 502/503/504 when the route's service configures more than one attempt (see
-// internal/dataplane/retry). The rate limiter is consulted once, before the
-// first attempt. The request body is forwarded as-is to the upstream service.
+// internal/dataplane/retry); each retry goes to the next target. The rate
+// limiter is consulted once, before the first attempt. The request body is
+// forwarded as-is to the upstream service.
 //
 // Once a route is matched, ServeHTTP reports its name via routelabel, so that
 // a later 429, 502 or 504 can still be attributed to the route. Requests that
@@ -198,7 +211,8 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// The X-Forwarded-* headers set by newUpstreamRequest precede the
 	// request policy, so the policy can override or remove them.
-	req := newUpstreamRequest(ctx, view, r, matchedRoute, path)
+	targets := view.Balancer.Pick(matchedRoute.Service)
+	req := newUpstreamRequest(ctx, r, targets.Target(0), path)
 	headerNames := view.Engine.HeaderNames()
 
 	policy.ExecuteMutations(req.Header, &matchedRoute.Policies.Headers.Request, headerNames)
@@ -208,8 +222,16 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// client's Connection tokens never reach the gateway's own headers.
 	request.RemoveHopHeaders(req.Header)
 
-	// Every retry attempt reuses req as prepared above.
-	resp, err := retry.Do(executor.transport, req, matchedRoute.Policies.Retry)
+	// A repeated try goes to the next target in the selection, carrying the
+	// request as prepared above. With a single target every try reuses req.
+	var reroute retry.Reroute
+	if targets.Len() > 1 {
+		reroute = func(try int) *http.Request {
+			return retarget(req, targets.Target(try-1))
+		}
+	}
+
+	resp, err := retry.Do(executor.transport, req, matchedRoute.Policies.Retry, reroute)
 	if err != nil {
 		reason := fault.UpstreamFailed
 		if isTimeout(err) {

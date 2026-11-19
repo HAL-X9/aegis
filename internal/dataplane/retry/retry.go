@@ -21,15 +21,22 @@ const (
 	maxDrain = 4 << 10
 )
 
+// Reroute returns the request for a repeated try, numbered from 2, so that
+// the try can go to another target. It is called only after the previous try
+// has failed and its response, if any, has been closed.
+type Reroute func(try int) *http.Request
+
 // Do sends req through rt under policy: up to policy.Attempts tries, each
-// bounded by policy.AttemptTimeout if it is positive.
+// bounded by policy.AttemptTimeout if it is positive. The first try sends
+// req. Each repeated try sends the request reroute returns, or req again
+// when reroute is nil.
 //
 // With a single attempt and no attempt timeout, Do is a plain RoundTrip.
-func Do(rt http.RoundTripper, req *http.Request, policy snapshot.CompiledRetry) (*http.Response, error) {
+func Do(rt http.RoundTripper, req *http.Request, policy snapshot.CompiledRetry, reroute Reroute) (*http.Response, error) {
 	if policy.Attempts <= 1 && policy.AttemptTimeout <= 0 {
 		return rt.RoundTrip(req)
 	}
-	return roundTripWithRetries(rt, req, policy)
+	return roundTripWithRetries(rt, req, policy, reroute)
 }
 
 // roundTripWithRetries repeats a failed attempt only when all of these hold:
@@ -42,14 +49,19 @@ func Do(rt http.RoundTripper, req *http.Request, policy snapshot.CompiledRetry) 
 // The last attempt's response or error is returned as-is. Backoff is
 // exponential with full jitter and stops on context cancellation, so the
 // request context bounds the total retry time.
-func roundTripWithRetries(rt http.RoundTripper, req *http.Request, policy snapshot.CompiledRetry) (*http.Response, error) {
+func roundTripWithRetries(rt http.RoundTripper, req *http.Request, policy snapshot.CompiledRetry, reroute Reroute) (*http.Response, error) {
 	attempts := policy.Attempts
 	if !replayable(req) {
 		attempts = 1
 	}
 
+	current := req
 	for try := 1; ; try++ {
-		resp, err := attempt(rt, req, policy.AttemptTimeout)
+		if try > 1 && reroute != nil {
+			current = reroute(try)
+		}
+
+		resp, err := attempt(rt, current, policy.AttemptTimeout)
 
 		if try >= attempts || !retryable(req.Context(), resp, err) {
 			return resp, err

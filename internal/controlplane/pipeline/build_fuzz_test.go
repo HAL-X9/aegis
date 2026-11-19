@@ -78,7 +78,7 @@ func FuzzPathPrefixBuild(f *testing.F) {
 func validateOnePrefix(prefix string) (validate.Validated, bool) {
 	validated, err := validate.Validate(&schema.GatewayConfig{
 		Services: schema.Services{
-			"api": {Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080}},
+			"api": {Upstream: schema.Upstream{Scheme: "http", Targets: []schema.Target{{Host: "localhost", Port: 8080}}}},
 		},
 		Routes: []schema.Route{{
 			Name:    "r",

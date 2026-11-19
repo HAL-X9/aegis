@@ -61,15 +61,15 @@ func TestServeHTTPAllocationBudget(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			engine := buildProxyBenchEngine(t)
+			view := buildProxyBenchView(t)
 			if tc.policy {
-				engine = buildProxyBenchEngineWithPolicy(t)
+				view = buildProxyBenchViewWithPolicy(t)
 			}
 			transport := newBenchmarkTransport(
 				http.Header{"Content-Type": {"text/plain"}},
 				[]byte("hello"),
 			)
-			executor := newBenchExecutor(t, engine, transport)
+			executor := newBenchExecutor(t, view, transport)
 
 			req := tc.request()
 			w := newBenchmarkWriter()

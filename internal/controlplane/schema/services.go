@@ -16,11 +16,17 @@ type Service struct {
 	Retries Retries `yaml:"retries"`
 }
 
-// Upstream names a TCP endpoint (scheme, host and port) for proxied traffic.
+// Upstream names the endpoints that serve a service. Every target is reached
+// with the same scheme; requests are spread across the targets in turn.
 type Upstream struct {
-	Scheme string `yaml:"scheme"`
-	Host   string `yaml:"host"`
-	Port   int    `yaml:"port"`
+	Scheme  string   `yaml:"scheme"`
+	Targets []Target `yaml:"targets"`
+}
+
+// Target is one TCP endpoint of an upstream.
+type Target struct {
+	Host string `yaml:"host"`
+	Port int    `yaml:"port"`
 }
 
 // Retries configures upstream retries for a service.

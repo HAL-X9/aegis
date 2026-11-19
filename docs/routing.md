@@ -85,19 +85,20 @@ route-reference array, never copied.
 
 `internal/dataplane/router/engine.go` is the façade used by the proxy:
 `NewEngine` wraps the compiled snapshot — the route index, the compiled
-route slice, and the services (each carrying its parsed upstream URL). It
-exposes `Lookup(path string, visit func([]snapshot.RouteID) bool)`,
-`Route(id snapshot.RouteID) *snapshot.CompiledRoute`,
-and `UpstreamURL(route *snapshot.CompiledRoute) *url.URL`. Callers outside
-this package must not depend on the index internals.
+route slice, and the header registry. It exposes
+`Lookup(path string, visit func([]snapshot.RouteID) bool)` and
+`Route(id snapshot.RouteID) *snapshot.CompiledRoute`. Callers outside this
+package must not depend on the index internals. The engine selects routes
+only; the upstream target of a route's service is chosen by
+`internal/dataplane/balance`.
 
 `router.Engine.Resolve` selects the route for a request: it calls `Lookup` on
 the path, filters candidates by permitted HTTP method, applies header
 predicate matching via `router.HeadersMatch`, and reports `Matched`,
 `NotFound`, or `MethodNotAllowed`. `internal/dataplane/proxy/executor.go`
 translates a failed outcome into `404` or `405` and otherwise constructs the
-outbound request from the compiled upstream origin plus the incoming path and
-query, and performs the upstream round trip.
+outbound request from the origin of the target that `balance.Balancer.Pick`
+selects plus the incoming path and query, and performs the upstream round trip.
 
 ## Data boundaries
 

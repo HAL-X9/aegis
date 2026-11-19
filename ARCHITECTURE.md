@@ -51,7 +51,7 @@ flowchart TB
 4. The executor asks `router.Engine.Resolve` for the route. Resolve looks the path up in the route index (`snapshot.RouteIndex`), which offers candidate sets in priority order (static, parameter, wildcard, then `path_prefix` fallbacks), and accepts the first candidate that supports the HTTP method (a precomputed bitmask, `internal/httpmethod`) and satisfies the header predicates (`router.HeadersMatch`). If none does, it reports `NotFound` or `MethodNotAllowed`, which the executor turns into `404` or `405`.
 5. The client's bucket under the matched route's rate-limit policy is consulted once (`policy.RateLimiterSet.Allow`); the client is the address of the connection's peer. A rejected request is answered `429` before any upstream attempt. The route's service `timeout`, if configured, then bounds the remainder of the exchange.
 6. `request.UpstreamHeader` builds the outbound header, replacing the `X-Forwarded-*` headers with values derived from the connection. `policy.ExecuteMutations` applies the route's request-side header operations, and hop-by-hop headers are then stripped (`request.RemoveHopHeaders`).
-7. `retry.Do` sends the request through the configured `http.RoundTripper`, repeating idempotent, body-less requests after transient failures when the service configures more than one attempt.
+7. `balance.Balancer.Pick` selects the service's targets in turn (round robin), and the request is addressed to the first one. `retry.Do` sends it through the configured `http.RoundTripper`, repeating idempotent, body-less requests after transient failures when the service configures more than one attempt; each repeated try goes to the next target.
 8. On success, response-side policy mutations are applied, hop-by-hop headers are stripped, the headers are copied to the client, and the body is streamed with `io.CopyBuffer` using a pooled buffer. A failure to obtain a response is answered `504` for a timeout and `502` otherwise.
 9. Failure modes are explicit. Every status code the executor can return, and the condition that produces it, is listed in [docs/routing-and-errors.md](docs/routing-and-errors.md) §2.
 
@@ -67,6 +67,7 @@ sequenceDiagram
     participant V as View
     participant R as RouteIndex / Router
     participant L as RateLimiterSet
+    participant B as Balancer
     participant P as Policies
     participant T as http.Transport
     participant U as Upstream
@@ -91,11 +92,14 @@ sequenceDiagram
     X->>L: Allow(route)
     L-->>X: permitted
 
+    X->>B: Pick(service)
+    B-->>X: targets in turn
+
     X->>P: request mutations
     P-->>X: mutated headers
 
     X->>X: strip hop-by-hop headers
-    X->>T: RoundTrip (retry.Do)
+    X->>T: RoundTrip to the first target (retry.Do; each retry to the next)
 
     T->>U: HTTP request
     U-->>T: HTTP response
@@ -121,7 +125,7 @@ sequenceDiagram
 
 **Request ID: accepted when well-formed, otherwise a UUIDv7.** A client-supplied `X-Request-ID` is kept only when it is a single value of 1–128 visible ASCII characters, so a caller's ID can be followed end to end while spaces and control characters — the log-injection vector — never get through. Anything else is replaced with a UUIDv7, which is time-ordered and sorts naturally in logs, unlike UUIDv4. The ID is written into the request headers, which is how it reaches the upstream and later handlers without a `context.Context` allocation, and is echoed in the response.
 
-**Atomically published `View`.** The routing engine and the rate limiters are bundled into one `proxy.View` and installed with a single `Executor.Publish`. A request loads the pointer once, so it observes exactly one generation of both. The `http.RoundTripper` is deliberately outside the `View`, because its connection pool must outlive any configuration. Only the initial publication exists today; the boundary is what allows reload to be added without redesigning the executor.
+**Atomically published `View`.** The routing engine, the rate limiters and the target balancer are bundled into one `proxy.View` and installed with a single `Executor.Publish`. A request loads the pointer once, so it observes exactly one generation of all three. The `http.RoundTripper` is deliberately outside the `View`, because its connection pool must outlive any configuration. Only the initial publication exists today; the boundary is what allows reload to be added without redesigning the executor.
 
 **Canonical path is the routing key and the forwarding key.** `request.CanonicalPath` resolves dot segments and merges empty segments, and the result is both matched against the index and sent upstream. A request therefore cannot be authorized by one route while addressing another resource.
 
@@ -131,7 +135,7 @@ sequenceDiagram
 
 `cmd/main.go` installs a signal context (`SIGINT`, `SIGTERM`) and calls `app.New` followed by `App.Run`.
 
-1. **Construction (`app.New`).** Flags are parsed into a private `FlagSet`; each configuration path is resolved from its flag or environment variable. The runtime configuration is decoded over `config.DefaultRuntime()` and validated, and the routes manifest is loaded and validated by `controlplane/loader`. `Bootstrap` then compiles the manifest (`pipeline.Build`), builds the `router.Engine` and the rate limiters, creates the upstream transport, publishes the first `View`, and constructs both HTTP servers. No socket is opened at this stage; any error aborts startup.
+1. **Construction (`app.New`).** Flags are parsed into a private `FlagSet`; each configuration path is resolved from its flag or environment variable. The runtime configuration is decoded over `config.DefaultRuntime()` and validated, and the routes manifest is loaded and validated by `controlplane/loader`. `Bootstrap` then compiles the manifest (`pipeline.Build`), builds the `router.Engine`, the rate limiters and the target balancer, creates the upstream transport, publishes the first `View`, and constructs both HTTP servers. No socket is opened at this stage; any error aborts startup.
 2. **Serving (`App.Run`).** `Lifecycle` starts the public and system listeners under one `errgroup`. A failure of either listener, or cancellation of the signal context, triggers the single shutdown path.
 3. **Shutdown.** `/readyz` starts answering `503`, then both listeners are shut down in parallel, each bounded by a fixed 15 s `shutdownTimeout`. In-flight requests are drained within that bound; when it elapses, the remaining connections are closed forcibly and `Run` returns an error. The timeout is a constant, not a configuration field. A clean, signal-driven shutdown returns `nil`.
 
@@ -151,6 +155,7 @@ The readiness flip and the listener shutdown happen back to back, with no grace 
 | `internal/dataplane/proxy` | `Executor`, the terminal handler that performs the upstream call |
 | `internal/dataplane/policy` | Header mutation execution and rate limiting |
 | `internal/dataplane/request` | Path canonicalization and hop-by-hop header handling |
+| `internal/dataplane/balance` | Round-robin selection of a service's upstream targets; holds the turn of each service outside the immutable snapshot |
 | `internal/dataplane/retry` | Retries of idempotent upstream requests |
 | `internal/dataplane/fault` | The reasons for the error responses the gateway produces itself, each with its status, stable code, and problem document (RFC 9457) |
 | `internal/dataplane/routelabel` | Context-carried recorder for the matched route's name. The executor writes to it; nothing creates or reads it yet (see Roadmap) |
@@ -178,7 +183,7 @@ Nothing under `internal/` may import `internal/app`; only `cmd` and tests outsid
 
 The leaf layers (first five rows, plus `edge`) use an allow-list, so a new import, including a new third-party module, fails until it is named in the config. The others use a deny-list of the layers they must not reach. Test files have their own rules: for example, data plane tests may build snapshots with `controlplane/compile`, and edge tests may create a Prometheus registry.
 
-Inside the layers the direction of dependencies is fixed as well, for production code. In the control plane, `schema` and `ir` are leaves, `validate` knows `schema`, `normalize` knows `schema` and `ir`, `compile` knows `ir` and `snapshot`, `loader` knows `schema` and `validate`, and `pipeline` composes `validate`, `normalize` and `compile`. In the data plane, `request`, `routelabel` and `fault` are leaves, `policy`, `retry` and `router` know only `snapshot` (and `httpmethod`), and none of them may import `proxy` or one another.
+Inside the layers the direction of dependencies is fixed as well, for production code. In the control plane, `schema` and `ir` are leaves, `validate` knows `schema`, `normalize` knows `schema` and `ir`, `compile` knows `ir` and `snapshot`, `loader` knows `schema` and `validate`, and `pipeline` composes `validate`, `normalize` and `compile`. In the data plane, `request`, `routelabel` and `fault` are leaves, `policy`, `balance`, `retry` and `router` know only `snapshot` (and `httpmethod`), and none of them may import `proxy` or one another.
 
 **Known violations.** Each is marked `TODO(arch)` in `.golangci.yml` and is allowed only until the step that removes it:
 

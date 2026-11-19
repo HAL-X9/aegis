@@ -35,22 +35,32 @@ Routes reference services by name, and route policies reference entries from the
 
 ## The `services` section
 
-The `services` section describes the backend services to which the gateway can proxy requests. Each service is defined as a name-to-upstream pair.
+The `services` section describes the backend services to which the gateway can proxy requests. Each service names an upstream: one or more endpoints that serve the same content.
 
 ```yaml
 services:
   user-profile:
     upstream:
       scheme: http
-      host: mock-upstream
-      port: 8082
+      targets:
+        - host: profile-1.internal
+          port: 8082
+        - host: profile-2.internal
+          port: 8082
 ```
 
-The `upstream` field consists of three required fields:
+The `upstream` field consists of two required fields:
 
-- **scheme** — the connection scheme for the upstream service (`http` or `https`);
-- **host** — the network name or address of the upstream service;
-- **port** — the port on which the upstream service accepts connections (1 to 65535).
+- **scheme** — the connection scheme, shared by every target (`http` or `https`);
+- **targets** — a non-empty list of endpoints, each with:
+  - **host** — the network name or address of the endpoint;
+  - **port** — the port on which the endpoint accepts connections (1 to 65535).
+
+A target may be listed only once; two entries with the same host and port are a validation error, since a repeated entry would silently receive a larger share of the traffic. Hosts are compared after surrounding whitespace is removed, and are otherwise compared exactly.
+
+**Target selection.** Each service takes its targets in turn (round robin), in the order in which they are listed: the first request goes to the first target, the next request to the second, and so on, wrapping around after the last. Every service keeps its own turn. A request is sent with the `Host` header of the target that receives it.
+
+All targets are assumed to be interchangeable. The gateway does not yet check their health, so a target that is down keeps receiving its share of first attempts; retries, described below, move a failed request to another target.
 
 The service name (the key of the `services` map) is used solely as a reference within the configuration — in the `service` field of a route entry. It carries no other meaning.
 
@@ -71,6 +81,8 @@ services:
 - **timeout** — bounds the whole upstream exchange, including retries and the response body. Zero or absent means no service-level timeout; the listener's `request_timeout` still applies.
 - **retries.attempts** — the total number of tries, including the first (at most 5). Zero or one disables retries. A request is retried only if its method is `GET`, `HEAD`, `OPTIONS`, `TRACE`, `PUT`, or `DELETE` and it has no body; `POST` and `PATCH` are never retried. A retry follows a transport error (while the client request is still alive), an expired attempt timeout, or a 502, 503, or 504 response.
 - **retries.attempt_timeout** — bounds each attempt, including its response body. It must not exceed `timeout`.
+
+Each retry goes to the next target in turn after the one that failed, wrapping around when there are more attempts than targets. A service with a single target retries that target. The retries of one request do not advance the turn of the service, so the request that follows starts at the next target exactly as it would without them.
 
 When a timeout expires, the gateway responds `504 Gateway Timeout`.
 
@@ -255,8 +267,9 @@ services:
   user-profile:
     upstream:
       scheme: http
-      host: mock-upstream
-      port: 8082
+      targets:
+        - host: mock-upstream
+          port: 8082
 
 routes:
   - name: user-profile

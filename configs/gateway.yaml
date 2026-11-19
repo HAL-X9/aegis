@@ -4,8 +4,9 @@ services:
   user-profile:
     upstream:
       scheme: http
-      host: mock-upstream
-      port: 8082
+      targets:
+        - host: mock-upstream
+          port: 8082
     timeout: 5s
     retries:
       attempts: 3
@@ -14,14 +15,16 @@ services:
   order-service:
     upstream:
       scheme: http
-      host: mock-upstream
-      port: 8083
+      targets:
+        - host: mock-upstream
+          port: 8083
 
   benchmark:
     upstream:
       scheme: http
-      host: mock-upstream
-      port: 8082
+      targets:
+        - host: mock-upstream
+          port: 8082
 
 # ------------------------ Routes ------------------------
 

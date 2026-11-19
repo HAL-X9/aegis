@@ -151,15 +151,9 @@ func buildBenchEngine(
 	}
 
 	routes := make([]snapshot.CompiledRoute, 0, size)
-	services := make([]snapshot.CompiledService, 0, size)
 
 	for i := 0; i < size; i++ {
 		id := strconv.Itoa(i)
-
-		services = append(services, snapshot.CompiledService{
-			Name:     "svc-" + id,
-			Upstream: testURL("http://upstream-" + id + ".internal:8080"),
-		})
 
 		routes = append(routes, snapshot.CompiledRoute{
 			Name:    "svc-" + id,
@@ -173,9 +167,6 @@ func buildBenchEngine(
 	}
 
 	engine, err := buildEngine(&snapshot.CompiledConfig{
-		Services: snapshot.CompiledServices{
-			Items: services,
-		},
 		Routes: routes,
 	})
 	if err != nil {
@@ -206,7 +197,6 @@ func buildDeepBenchEngine(tb testing.TB, size int) (*Engine, string) {
 	}
 
 	routes := make([]snapshot.CompiledRoute, 0, size)
-	services := make([]snapshot.CompiledService, 0, size)
 
 	for i := 0; i < size; i++ {
 		n := i
@@ -228,11 +218,6 @@ func buildDeepBenchEngine(tb testing.TB, size int) (*Engine, string) {
 
 		id := strconv.Itoa(i)
 
-		services = append(services, snapshot.CompiledService{
-			Name:     "deep-svc-" + id,
-			Upstream: testURL("http://deep-upstream-" + id + ".internal:8080"),
-		})
-
 		routes = append(routes, snapshot.CompiledRoute{
 			Name:    "deep-route-" + id,
 			Service: snapshot.ServiceID(i),
@@ -244,9 +229,6 @@ func buildDeepBenchEngine(tb testing.TB, size int) (*Engine, string) {
 	}
 
 	engine, err := buildEngine(&snapshot.CompiledConfig{
-		Services: snapshot.CompiledServices{
-			Items: services,
-		},
 		Routes: routes,
 	})
 	if err != nil {
@@ -381,7 +363,6 @@ func buildMixedBenchEngine(
 	tb.Helper()
 
 	routes := make([]snapshot.CompiledRoute, 0, groups*3)
-	services := make([]snapshot.CompiledService, 0, groups*3)
 	lookupPaths := make([]string, 0, groups*3)
 
 	addRoute := func(
@@ -389,12 +370,7 @@ func buildMixedBenchEngine(
 		pathPrefix string,
 		lookupPath string,
 	) {
-		idx := len(services)
-
-		services = append(services, snapshot.CompiledService{
-			Name:     name,
-			Upstream: testURL("http://upstream-" + name + ".internal:8080"),
-		})
+		idx := len(routes)
 
 		routes = append(routes, snapshot.CompiledRoute{
 			Name:    name,
@@ -431,9 +407,6 @@ func buildMixedBenchEngine(
 	}
 
 	engine, err := buildEngine(&snapshot.CompiledConfig{
-		Services: snapshot.CompiledServices{
-			Items: services,
-		},
 		Routes: routes,
 	})
 	if err != nil {

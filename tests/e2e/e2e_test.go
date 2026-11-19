@@ -132,8 +132,9 @@ services:
   user-profile:
     upstream:
       scheme: http
-      host: ` + host + `
-      port: ` + strconv.Itoa(port) + `
+      targets:
+        - host: ` + host + `
+          port: ` + strconv.Itoa(port) + `
     timeout: 200ms
 
 routes:

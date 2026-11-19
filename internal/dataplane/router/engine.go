@@ -3,7 +3,6 @@ package router
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 
 	"github.com/HAL-X9/aegis/internal/httpmethod"
 	"github.com/HAL-X9/aegis/internal/snapshot"
@@ -28,11 +27,13 @@ const (
 
 // Engine is the request-ready routing view of a compiled snapshot. The
 // control plane has already built everything it serves, so NewEngine only
-// wraps it. Lookup, Route, UpstreamURL, and HeaderNames never allocate.
+// wraps it. Lookup, Resolve, Route, and HeaderNames never allocate.
+//
+// The Engine selects routes only. Choosing the upstream target of a route's
+// service is the job of internal/dataplane/balance.
 type Engine struct {
 	index       snapshot.RouteIndex
 	routes      []snapshot.CompiledRoute
-	services    snapshot.CompiledServices
 	headerNames snapshot.HeaderRegistry
 }
 
@@ -46,7 +47,6 @@ func NewEngine(cfg *snapshot.CompiledConfig) (*Engine, error) {
 	return &Engine{
 		index:       cfg.Index,
 		routes:      cfg.Routes,
-		services:    cfg.Services,
 		headerNames: cfg.HeaderNames,
 	}, nil
 }
@@ -116,13 +116,6 @@ func (e *Engine) Resolve(path string, method httpmethod.Mask, headers http.Heade
 
 func (e *Engine) Route(id snapshot.RouteID) *snapshot.CompiledRoute {
 	return &e.routes[id]
-}
-
-// UpstreamURL returns the parsed upstream origin (scheme and host) of the
-// service route refers to. The result is shared by every request and must be
-// copied before it is modified.
-func (e *Engine) UpstreamURL(route *snapshot.CompiledRoute) *url.URL {
-	return e.services.Items[route.Service].Upstream
 }
 
 // HeaderNames returns the registry that resolves dynamic HeaderIDs

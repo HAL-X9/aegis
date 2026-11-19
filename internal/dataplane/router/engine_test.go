@@ -2,7 +2,6 @@ package router
 
 import (
 	"net/http"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -23,16 +22,6 @@ func buildEngine(cfg *snapshot.CompiledConfig) (*Engine, error) {
 	return NewEngine(cfg)
 }
 
-// testURL parses a literal upstream origin. A malformed literal is a bug in
-// the test itself, so it panics rather than returning an error.
-func testURL(raw string) *url.URL {
-	u, err := url.Parse(raw)
-	if err != nil {
-		panic(err)
-	}
-	return u
-}
-
 func TestNewEngine(t *testing.T) {
 	t.Run("returns error for nil config", func(t *testing.T) {
 		_, err := NewEngine(nil)
@@ -46,14 +35,6 @@ func TestNewEngine(t *testing.T) {
 	})
 	t.Run("builds engine and resolves route", func(t *testing.T) {
 		cfg := &snapshot.CompiledConfig{
-			Services: snapshot.CompiledServices{
-				Items: []snapshot.CompiledService{
-					{
-						Name:     "api",
-						Upstream: testURL("http://localhost:8080"),
-					},
-				},
-			},
 			Routes: []snapshot.CompiledRoute{
 				{
 					Name:    "api",
@@ -93,23 +74,6 @@ func TestNewEngine(t *testing.T) {
 		if route.Name != "api" {
 			t.Fatalf("route name = %q, want %q", route.Name, "api")
 		}
-
-		upstream := engine.UpstreamURL(route)
-		if upstream == nil {
-			t.Fatal("expected non-nil upstream URL")
-		}
-
-		if upstream.Scheme != "http" {
-			t.Fatalf("upstream scheme = %q, want %q", upstream.Scheme, "http")
-		}
-
-		if upstream.Host != "localhost:8080" {
-			t.Fatalf(
-				"upstream host = %q, want %q",
-				upstream.Host,
-				"localhost:8080",
-			)
-		}
 	})
 }
 
@@ -131,14 +95,6 @@ func TestEngineLookup(t *testing.T) {
 
 	t.Run("empty path does nothing", func(t *testing.T) {
 		engine, err := buildEngine(&snapshot.CompiledConfig{
-			Services: snapshot.CompiledServices{
-				Items: []snapshot.CompiledService{
-					{
-						Name:     "x",
-						Upstream: testURL("http://h:1"),
-					},
-				},
-			},
 			Routes: []snapshot.CompiledRoute{
 				{
 					Name:    "x",
@@ -167,14 +123,6 @@ func TestEngineLookup(t *testing.T) {
 
 	t.Run("unmatched path does not produce candidates", func(t *testing.T) {
 		engine, err := buildEngine(&snapshot.CompiledConfig{
-			Services: snapshot.CompiledServices{
-				Items: []snapshot.CompiledService{
-					{
-						Name:     "api",
-						Upstream: testURL("http://localhost:8080"),
-					},
-				},
-			},
 			Routes: []snapshot.CompiledRoute{
 				{
 					Name:    "api",
@@ -214,11 +162,7 @@ type resolveRoute struct {
 func resolveEngine(t *testing.T, routes ...resolveRoute) *Engine {
 	t.Helper()
 
-	cfg := &snapshot.CompiledConfig{
-		Services: snapshot.CompiledServices{
-			Items: []snapshot.CompiledService{{Name: "svc", Upstream: testURL("http://localhost:8080")}},
-		},
-	}
+	cfg := &snapshot.CompiledConfig{}
 	for _, r := range routes {
 		var mask httpmethod.Mask
 		for _, method := range r.methods {

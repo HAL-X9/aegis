@@ -26,9 +26,9 @@ func Services(services ir.Services) (snapshot.CompiledServices, map[string]snaps
 		serviceIDs[name] = snapshot.ServiceID(i)
 
 		compiledServices = append(compiledServices, snapshot.CompiledService{
-			Name:     name,
-			Upstream: upstreamOriginURL(service.Upstream),
-			Timeout:  service.Timeout,
+			Name:    name,
+			Targets: targetOrigins(service.Upstream),
+			Timeout: service.Timeout,
 			Retry: snapshot.CompiledRetry{
 				Attempts:       max(1, service.Retries.Attempts),
 				AttemptTimeout: service.Retries.AttemptTimeout,
@@ -41,12 +41,15 @@ func Services(services ir.Services) (snapshot.CompiledServices, map[string]snaps
 	}, serviceIDs
 }
 
-func upstreamOriginURL(upstream ir.Upstream) *url.URL {
-	return &url.URL{
-		Scheme: upstream.Scheme,
-		Host: net.JoinHostPort(
-			upstream.Host,
-			strconv.Itoa(upstream.Port),
-		),
+// targetOrigins returns the origin (scheme and host) of every target of
+// upstream, in order.
+func targetOrigins(upstream ir.Upstream) []url.URL {
+	origins := make([]url.URL, len(upstream.Targets))
+	for i, target := range upstream.Targets {
+		origins[i] = url.URL{
+			Scheme: upstream.Scheme,
+			Host:   net.JoinHostPort(target.Host, strconv.Itoa(target.Port)),
+		}
 	}
+	return origins
 }

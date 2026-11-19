@@ -12,7 +12,7 @@ import (
 // must still delete the client's own headers (invariant I-009).
 func TestExecutorClientConnectionTokensKeepGatewayHeaders(t *testing.T) {
 	var got http.Header
-	exec := newTestExecutor(t, buildTestEngine(t, pathPolicyConfig()), roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	exec := newTestExecutor(t, buildTestView(t, pathPolicyConfig()), roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		got = r.Header
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(""))}, nil
 	}))

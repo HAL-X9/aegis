@@ -254,6 +254,15 @@ linters:
             - github.com/HAL-X9/aegis/internal/snapshot
             - golang.org/x/time/rate
 
+        dataplane-balance:
+          list-mode: strict
+          files:
+            - "**/internal/dataplane/balance/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/HAL-X9/aegis/internal/snapshot
+
         dataplane-retry:
           list-mode: strict
           files:

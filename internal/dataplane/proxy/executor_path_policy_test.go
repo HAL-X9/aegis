@@ -41,9 +41,9 @@ func pathPolicyConfig() *snapshot.CompiledConfig {
 	}
 	return &snapshot.CompiledConfig{
 		Services: snapshot.CompiledServices{Items: []snapshot.CompiledService{
-			{Name: "public", Upstream: testURL("http://upstream:9000")},
-			{Name: "admin", Upstream: testURL("http://upstream:9001")},
-			{Name: "default", Upstream: testURL("http://upstream:9003")},
+			{Name: "public", Targets: targets("http://upstream:9000")},
+			{Name: "admin", Targets: targets("http://upstream:9001")},
+			{Name: "default", Targets: targets("http://upstream:9003")},
 		}},
 		Routes: []snapshot.CompiledRoute{
 			route("public", 0, "/public"),
@@ -86,7 +86,7 @@ func servePath(t testing.TB, rawTarget string) (pathOutcome, *url.URL, bool) {
 		got       pathOutcome
 		forwarded *url.URL
 	)
-	exec := newTestExecutor(t, buildTestEngine(t, pathPolicyConfig()), roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	exec := newTestExecutor(t, buildTestView(t, pathPolicyConfig()), roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		forwarded = r.URL
 		got.upstreamEscaped = r.URL.EscapedPath()
 		got.upstreamHost = r.URL.Host

@@ -2,6 +2,8 @@ package validate
 
 import (
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
 
 	"github.com/HAL-X9/aegis/internal/controlplane/schema"
@@ -21,22 +23,8 @@ func validateServices(services schema.Services) error {
 }
 
 func validateService(service schema.Service) error {
-	if strings.TrimSpace(service.Upstream.Scheme) == "" {
-		return fmt.Errorf("upstream.scheme is required and must be non-empty")
-	}
-
-	switch service.Upstream.Scheme {
-	case "http", "https":
-	default:
-		return fmt.Errorf("upstream.scheme must be one of: http, https")
-	}
-
-	if strings.TrimSpace(service.Upstream.Host) == "" {
-		return fmt.Errorf("route validation failed: upstream.host is required and must not be blank")
-	}
-
-	if service.Upstream.Port <= 0 || service.Upstream.Port > 65535 {
-		return fmt.Errorf("route validation failed: upstream.port must be in range 1..65535")
+	if err := validateUpstream(service.Upstream); err != nil {
+		return err
 	}
 
 	if service.Timeout < 0 {
@@ -53,6 +41,41 @@ func validateService(service schema.Service) error {
 
 	if service.Timeout > 0 && service.Retries.AttemptTimeout > service.Timeout {
 		return fmt.Errorf("retries.attempt_timeout must not exceed timeout")
+	}
+
+	return nil
+}
+
+// validateUpstream requires a supported scheme and at least one target, each
+// a host and a port, with no endpoint listed twice. A repeated endpoint would
+// silently receive a larger share of the traffic.
+func validateUpstream(upstream schema.Upstream) error {
+	switch upstream.Scheme {
+	case "http", "https":
+	default:
+		return fmt.Errorf("upstream.scheme must be one of: http, https")
+	}
+
+	if len(upstream.Targets) == 0 {
+		return fmt.Errorf("upstream.targets must list at least one target")
+	}
+
+	seen := make(map[string]int, len(upstream.Targets))
+	for i, target := range upstream.Targets {
+		host := strings.TrimSpace(target.Host)
+		if host == "" {
+			return fmt.Errorf("upstream.targets[%d].host must not be blank", i)
+		}
+
+		if target.Port <= 0 || target.Port > 65535 {
+			return fmt.Errorf("upstream.targets[%d].port must be in range 1..65535", i)
+		}
+
+		endpoint := net.JoinHostPort(host, strconv.Itoa(target.Port))
+		if first, dup := seen[endpoint]; dup {
+			return fmt.Errorf("upstream.targets[%d] repeats upstream.targets[%d] (%s)", i, first, endpoint)
+		}
+		seen[endpoint] = i
 	}
 
 	return nil

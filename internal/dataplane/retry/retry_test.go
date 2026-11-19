@@ -35,7 +35,7 @@ func TestDoRetriesAfterAttemptTimeout(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://upstream/", nil)
 	policy := snapshot.CompiledRetry{Attempts: 3, AttemptTimeout: 10 * time.Millisecond}
 
-	resp, err := Do(hangThenRespond(2, &calls), req, policy)
+	resp, err := Do(hangThenRespond(2, &calls), req, policy, nil)
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestDoReturnsDeadlineWhenEveryAttemptTimesOut(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://upstream/", nil)
 	policy := snapshot.CompiledRetry{Attempts: 2, AttemptTimeout: 10 * time.Millisecond}
 
-	_, err := Do(hangThenRespond(2, &calls), req, policy)
+	_, err := Do(hangThenRespond(2, &calls), req, policy, nil)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
@@ -70,7 +70,7 @@ func TestDoBoundsSingleAttempt(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://upstream/", nil)
 	policy := snapshot.CompiledRetry{Attempts: 1, AttemptTimeout: 10 * time.Millisecond}
 
-	_, err := Do(hangThenRespond(1, &calls), req, policy)
+	_, err := Do(hangThenRespond(1, &calls), req, policy, nil)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
@@ -81,7 +81,7 @@ func TestDoDoesNotRetryNonReplayableRequest(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://upstream/", strings.NewReader("payload"))
 	policy := snapshot.CompiledRetry{Attempts: 3, AttemptTimeout: 10 * time.Millisecond}
 
-	if _, err := Do(hangThenRespond(1, &calls), req, policy); err == nil {
+	if _, err := Do(hangThenRespond(1, &calls), req, policy, nil); err == nil {
 		t.Fatal("Do succeeded, want the attempt timeout")
 	}
 	if calls != 1 {
@@ -96,11 +96,50 @@ func TestDoStopsWhenRequestContextEnds(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://upstream/", nil).WithContext(ctx)
 	policy := snapshot.CompiledRetry{Attempts: 5}
 
-	_, err := Do(hangThenRespond(5, &calls), req, policy)
+	_, err := Do(hangThenRespond(5, &calls), req, policy, nil)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
 	if calls != 1 {
 		t.Fatalf("attempts = %d, want 1", calls)
+	}
+}
+
+// TestDoSendsEachRepeatedTryToTheReroutedRequest checks that the first try
+// sends req and that every later try sends what reroute returns for it.
+func TestDoSendsEachRepeatedTryToTheReroutedRequest(t *testing.T) {
+	var hosts []string
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		hosts = append(hosts, r.URL.Host)
+		status := http.StatusServiceUnavailable
+		if len(hosts) == 3 {
+			status = http.StatusOK
+		}
+		return &http.Response{StatusCode: status, Body: http.NoBody}, nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "http://a/", nil)
+	var tries []int
+	reroute := func(try int) *http.Request {
+		tries = append(tries, try)
+		next := req.Clone(req.Context())
+		next.URL.Host = string(rune('a' + try - 1))
+		return next
+	}
+
+	resp, err := Do(transport, req, snapshot.CompiledRetry{Attempts: 3}, reroute)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if got, want := strings.Join(hosts, ","), "a,b,c"; got != want {
+		t.Fatalf("hosts = %s, want %s", got, want)
+	}
+	if len(tries) != 2 || tries[0] != 2 || tries[1] != 3 {
+		t.Fatalf("reroute called for tries %v, want [2 3]", tries)
+	}
+	if req.URL.Host != "a" {
+		t.Fatalf("req.URL.Host = %q; Do must not modify req", req.URL.Host)
 	}
 }

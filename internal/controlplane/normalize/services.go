@@ -19,12 +19,8 @@ func Services(services schema.Services) ir.Services {
 		}
 
 		normalized[name] = ir.Service{
-			Upstream: ir.Upstream{
-				Scheme: strings.ToLower(service.Upstream.Scheme),
-				Host:   strings.TrimSpace(service.Upstream.Host),
-				Port:   service.Upstream.Port,
-			},
-			Timeout: service.Timeout,
+			Upstream: upstream(service.Upstream),
+			Timeout:  service.Timeout,
 			Retries: ir.Retries{
 				Attempts:       attempts,
 				AttemptTimeout: service.Retries.AttemptTimeout,
@@ -33,4 +29,21 @@ func Services(services schema.Services) ir.Services {
 	}
 
 	return normalized
+}
+
+// upstream keeps the targets in configuration order, so the order in which
+// the data plane cycles through them is the order the operator wrote.
+func upstream(upstream schema.Upstream) ir.Upstream {
+	targets := make([]ir.Target, len(upstream.Targets))
+	for i, target := range upstream.Targets {
+		targets[i] = ir.Target{
+			Host: strings.TrimSpace(target.Host),
+			Port: target.Port,
+		}
+	}
+
+	return ir.Upstream{
+		Scheme:  strings.ToLower(upstream.Scheme),
+		Targets: targets,
+	}
 }

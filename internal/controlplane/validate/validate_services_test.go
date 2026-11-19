@@ -33,16 +33,14 @@ func TestValidateServices(t *testing.T) {
 		services := schema.Services{
 			"user-profile": {
 				Upstream: schema.Upstream{
-					Scheme: "http",
-					Host:   "mock-upstream",
-					Port:   8082,
+					Scheme:  "http",
+					Targets: []schema.Target{{Host: "mock-upstream", Port: 8082}},
 				},
 			},
 			"billing": {
 				Upstream: schema.Upstream{
-					Scheme: "https",
-					Host:   "billing.internal",
-					Port:   443,
+					Scheme:  "https",
+					Targets: []schema.Target{{Host: "billing.internal", Port: 443}},
 				},
 			},
 		}
@@ -58,9 +56,8 @@ func TestValidateServices(t *testing.T) {
 		services := schema.Services{
 			"user-profile": {
 				Upstream: schema.Upstream{
-					Scheme: "grpc",
-					Host:   "mock-upstream",
-					Port:   8082,
+					Scheme:  "grpc",
+					Targets: []schema.Target{{Host: "mock-upstream", Port: 8082}},
 				},
 			},
 		}
@@ -93,9 +90,8 @@ func TestValidateService(t *testing.T) {
 			name: "valid http",
 			service: schema.Service{
 				Upstream: schema.Upstream{
-					Scheme: "http",
-					Host:   "localhost",
-					Port:   8080,
+					Scheme:  "http",
+					Targets: []schema.Target{{Host: "localhost", Port: 8080}},
 				},
 			},
 		},
@@ -103,9 +99,21 @@ func TestValidateService(t *testing.T) {
 			name: "valid https",
 			service: schema.Service{
 				Upstream: schema.Upstream{
-					Scheme: "https",
-					Host:   "example.com",
-					Port:   443,
+					Scheme:  "https",
+					Targets: []schema.Target{{Host: "example.com", Port: 443}},
+				},
+			},
+		},
+		{
+			name: "several targets",
+			service: schema.Service{
+				Upstream: schema.Upstream{
+					Scheme: "http",
+					Targets: []schema.Target{
+						{Host: "10.0.0.1", Port: 8080},
+						{Host: "10.0.0.2", Port: 8080},
+						{Host: "10.0.0.1", Port: 8081},
+					},
 				},
 			},
 		},
@@ -113,103 +121,84 @@ func TestValidateService(t *testing.T) {
 			name: "empty scheme",
 			service: schema.Service{
 				Upstream: schema.Upstream{
-					Host: "localhost",
-					Port: 8080,
-				},
-			},
-			wantErr:    true,
-			wantSubstr: "upstream.scheme is required and must be non-empty",
-		},
-		{
-			name: "blank scheme",
-			service: schema.Service{
-				Upstream: schema.Upstream{
-					Scheme: "   ",
-					Host:   "localhost",
-					Port:   8080,
-				},
-			},
-			wantErr:    true,
-			wantSubstr: "upstream.scheme is required and must be non-empty",
-		},
-		{
-			name: "unsupported scheme",
-			service: schema.Service{
-				Upstream: schema.Upstream{
-					Scheme: "grpc",
-					Host:   "localhost",
-					Port:   8080,
+					Targets: []schema.Target{{Host: "localhost", Port: 8080}},
 				},
 			},
 			wantErr:    true,
 			wantSubstr: "upstream.scheme must be one of: http, https",
 		},
 		{
-			name: "empty host",
+			name: "unsupported scheme",
 			service: schema.Service{
 				Upstream: schema.Upstream{
-					Scheme: "http",
-					Port:   8080,
+					Scheme:  "grpc",
+					Targets: []schema.Target{{Host: "localhost", Port: 8080}},
 				},
 			},
 			wantErr:    true,
-			wantSubstr: "upstream.host is required and must not be blank",
+			wantSubstr: "upstream.scheme must be one of: http, https",
+		},
+		{
+			name: "no targets",
+			service: schema.Service{
+				Upstream: schema.Upstream{Scheme: "http"},
+			},
+			wantErr:    true,
+			wantSubstr: "upstream.targets must list at least one target",
 		},
 		{
 			name: "blank host",
 			service: schema.Service{
 				Upstream: schema.Upstream{
 					Scheme: "http",
-					Host:   "   ",
-					Port:   8080,
+					Targets: []schema.Target{
+						{Host: "localhost", Port: 8080},
+						{Host: "   ", Port: 8080},
+					},
 				},
 			},
 			wantErr:    true,
-			wantSubstr: "upstream.host is required and must not be blank",
+			wantSubstr: "upstream.targets[1].host must not be blank",
 		},
 		{
 			name: "port zero",
 			service: schema.Service{
 				Upstream: schema.Upstream{
-					Scheme: "http",
-					Host:   "localhost",
-					Port:   0,
+					Scheme:  "http",
+					Targets: []schema.Target{{Host: "localhost", Port: 0}},
 				},
 			},
 			wantErr:    true,
-			wantSubstr: "upstream.port must be in range 1..65535",
+			wantSubstr: "upstream.targets[0].port must be in range 1..65535",
 		},
 		{
 			name: "negative port",
 			service: schema.Service{
 				Upstream: schema.Upstream{
-					Scheme: "http",
-					Host:   "localhost",
-					Port:   -1,
+					Scheme:  "http",
+					Targets: []schema.Target{{Host: "localhost", Port: -1}},
 				},
 			},
 			wantErr:    true,
-			wantSubstr: "upstream.port must be in range 1..65535",
+			wantSubstr: "upstream.targets[0].port must be in range 1..65535",
 		},
 		{
 			name: "port above maximum",
 			service: schema.Service{
 				Upstream: schema.Upstream{
-					Scheme: "http",
-					Host:   "localhost",
-					Port:   65536,
+					Scheme:  "http",
+					Targets: []schema.Target{{Host: "localhost", Port: 65536}},
 				},
 			},
 			wantErr:    true,
-			wantSubstr: "upstream.port must be in range 1..65535",
+			wantSubstr: "upstream.targets[0].port must be in range 1..65535",
 		},
 		{
 			name: "minimum valid port",
 			service: schema.Service{
 				Upstream: schema.Upstream{
-					Scheme: "http",
-					Host:   "localhost",
-					Port:   1,
+					Scheme:  "http",
+					Targets: []schema.Target{{Host: "localhost", Port: 1}},
 				},
 			},
 		},
@@ -217,16 +206,30 @@ func TestValidateService(t *testing.T) {
 			name: "maximum valid port",
 			service: schema.Service{
 				Upstream: schema.Upstream{
-					Scheme: "http",
-					Host:   "localhost",
-					Port:   65535,
+					Scheme:  "http",
+					Targets: []schema.Target{{Host: "localhost", Port: 65535}},
 				},
 			},
 		},
 		{
+			name: "repeated target",
+			service: schema.Service{
+				Upstream: schema.Upstream{
+					Scheme: "http",
+					Targets: []schema.Target{
+						{Host: "10.0.0.1", Port: 8080},
+						{Host: "10.0.0.2", Port: 8080},
+						{Host: " 10.0.0.1 ", Port: 8080},
+					},
+				},
+			},
+			wantErr:    true,
+			wantSubstr: "upstream.targets[2] repeats upstream.targets[0] (10.0.0.1:8080)",
+		},
+		{
 			name: "timeouts within bounds",
 			service: schema.Service{
-				Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
+				Upstream: schema.Upstream{Scheme: "http", Targets: []schema.Target{{Host: "localhost", Port: 8080}}},
 				Timeout:  5 * time.Second,
 				Retries:  schema.Retries{Attempts: 3, AttemptTimeout: 2 * time.Second},
 			},
@@ -234,14 +237,14 @@ func TestValidateService(t *testing.T) {
 		{
 			name: "attempt timeout without service timeout",
 			service: schema.Service{
-				Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
+				Upstream: schema.Upstream{Scheme: "http", Targets: []schema.Target{{Host: "localhost", Port: 8080}}},
 				Retries:  schema.Retries{AttemptTimeout: time.Second},
 			},
 		},
 		{
 			name: "negative timeout",
 			service: schema.Service{
-				Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
+				Upstream: schema.Upstream{Scheme: "http", Targets: []schema.Target{{Host: "localhost", Port: 8080}}},
 				Timeout:  -time.Second,
 			},
 			wantErr:    true,
@@ -250,7 +253,7 @@ func TestValidateService(t *testing.T) {
 		{
 			name: "negative attempt timeout",
 			service: schema.Service{
-				Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
+				Upstream: schema.Upstream{Scheme: "http", Targets: []schema.Target{{Host: "localhost", Port: 8080}}},
 				Retries:  schema.Retries{AttemptTimeout: -time.Second},
 			},
 			wantErr:    true,
@@ -259,7 +262,7 @@ func TestValidateService(t *testing.T) {
 		{
 			name: "attempt timeout exceeds timeout",
 			service: schema.Service{
-				Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080},
+				Upstream: schema.Upstream{Scheme: "http", Targets: []schema.Target{{Host: "localhost", Port: 8080}}},
 				Timeout:  time.Second,
 				Retries:  schema.Retries{AttemptTimeout: 2 * time.Second},
 			},

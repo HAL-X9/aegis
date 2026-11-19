@@ -21,8 +21,9 @@ type CompiledService struct {
 	// Name is the stable service identifier used for diagnostics and observability.
 	Name string
 
-	// Upstream is the parsed upstream origin, scheme and host only.
-	Upstream *url.URL
+	// Targets holds the origin (scheme and host only) of every upstream
+	// endpoint, in configuration order. It is never empty.
+	Targets []url.URL
 
 	// Timeout bounds the whole upstream exchange, including retries and the
 	// response body; zero means none.

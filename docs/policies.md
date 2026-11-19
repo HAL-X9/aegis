@@ -152,7 +152,8 @@ override or remove them.
 
 - **`Host`.** A `set` or `add` of `Host` in a request policy writes
   `Header["Host"]` of the outbound request, which `net/http` ignores when
-  sending it: the upstream receives the host of the service's `upstream`.
+  sending it: the upstream receives the host of the target that serves the
+  request.
   The operation is accepted by validation and has no effect.
 
 ## Notes

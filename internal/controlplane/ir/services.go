@@ -21,12 +21,18 @@ type Service struct {
 	Retries Retries
 }
 
-// Upstream defines a normalized upstream target configuration used for
-// request forwarding.
+// Upstream defines the normalized endpoints that serve a service.
 type Upstream struct {
-	// Scheme defines the upstream transport scheme.
+	// Scheme defines the upstream transport scheme, shared by every target.
 	Scheme string
 
+	// Targets lists the upstream endpoints in configuration order. It is
+	// never empty and holds no endpoint twice.
+	Targets []Target
+}
+
+// Target defines one normalized upstream endpoint.
+type Target struct {
 	// Host defines the upstream hostname or network address.
 	Host string
 

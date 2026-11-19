@@ -47,13 +47,13 @@ func FuzzExecutorPathAgreement(f *testing.F) {
 	}
 	cfg := &snapshot.CompiledConfig{
 		Services: snapshot.CompiledServices{Items: []snapshot.CompiledService{
-			{Name: "admin", Upstream: testURL("http://upstream:9001")},
-			{Name: "internal", Upstream: testURL("http://upstream:9002")},
-			{Name: "default", Upstream: testURL("http://upstream:9003")},
+			{Name: "admin", Targets: targets("http://upstream:9001")},
+			{Name: "internal", Targets: targets("http://upstream:9002")},
+			{Name: "default", Targets: targets("http://upstream:9003")},
 		}},
 		Routes: routes,
 	}
-	engine := buildTestEngine(f, cfg)
+	view := buildTestView(f, cfg)
 
 	f.Fuzz(func(t *testing.T, target string) {
 		req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(
@@ -64,7 +64,7 @@ func FuzzExecutorPathAgreement(f *testing.F) {
 
 		var forwarded *url.URL
 		calls := 0
-		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, view, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			calls++
 			forwarded = r.URL
 			return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Header: make(http.Header)}, nil

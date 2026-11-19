@@ -10,7 +10,7 @@ import (
 // testServices is the service table every route fixture refers to.
 func testServices() schema.Services {
 	return schema.Services{
-		"api": {Upstream: schema.Upstream{Scheme: "http", Host: "localhost", Port: 8080}},
+		"api": {Upstream: schema.Upstream{Scheme: "http", Targets: []schema.Target{{Host: "localhost", Port: 8080}}}},
 	}
 }
 

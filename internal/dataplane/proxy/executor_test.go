@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/HAL-X9/aegis/internal/controlplane/compile"
+	"github.com/HAL-X9/aegis/internal/dataplane/balance"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
 	"github.com/HAL-X9/aegis/internal/httpmethod"
@@ -23,37 +24,51 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
 }
 
-func buildTestEngine(t testing.TB, cfg *snapshot.CompiledConfig) *router.Engine {
+func buildTestView(t testing.TB, cfg *snapshot.CompiledConfig) *View {
 	t.Helper()
 
-	engine, err := newTestEngine(cfg)
+	view, err := newTestView(cfg)
 	if err != nil {
-		t.Fatalf("newTestEngine failed: %v", err)
+		t.Fatalf("newTestView failed: %v", err)
 	}
 
-	return engine
+	return view
 }
 
-// newTestEngine indexes cfg's routes the way the control plane does, then
-// wraps the snapshot in an Engine.
-func newTestEngine(cfg *snapshot.CompiledConfig) (*router.Engine, error) {
+// newTestView indexes cfg's routes the way the control plane does, then
+// derives from the snapshot the View that the composition root would
+// publish, with no rate-limit policies.
+func newTestView(cfg *snapshot.CompiledConfig) (*View, error) {
 	index, err := compile.Index(cfg.Routes)
 	if err != nil {
 		return nil, err
 	}
 	cfg.Index = index
 
-	return router.NewEngine(cfg)
+	engine, err := router.NewEngine(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &View{
+		Engine:   engine,
+		Limiters: noRateLimits(),
+		Balancer: balance.New(cfg.Services),
+	}, nil
 }
 
-// testURL parses a literal upstream origin. A malformed literal is a bug in
+// targets parses literal upstream origins. A malformed literal is a bug in
 // the test itself, so it panics rather than returning an error.
-func testURL(raw string) *url.URL {
-	u, err := url.Parse(raw)
-	if err != nil {
-		panic(err)
+func targets(origins ...string) []url.URL {
+	parsed := make([]url.URL, len(origins))
+	for i, origin := range origins {
+		u, err := url.Parse(origin)
+		if err != nil {
+			panic(err)
+		}
+		parsed[i] = *u
 	}
-	return u
+	return parsed
 }
 
 // noRateLimits returns a RateLimiterSet with no configured policies, so
@@ -68,16 +83,16 @@ func testConfig(routes ...snapshot.CompiledRoute) *snapshot.CompiledConfig {
 		Services: snapshot.CompiledServices{
 			Items: []snapshot.CompiledService{
 				{
-					Name:     "upstream",
-					Upstream: testURL("http://upstream:8080"),
+					Name:    "upstream",
+					Targets: targets("http://upstream:8080"),
 				},
 				{
-					Name:     "ignored",
-					Upstream: testURL("http://ignored:8080"),
+					Name:    "ignored",
+					Targets: targets("http://ignored:8080"),
 				},
 				{
-					Name:     "fallback",
-					Upstream: testURL("http://upstream:9090"),
+					Name:    "fallback",
+					Targets: targets("http://upstream:9090"),
 				},
 			},
 		},
@@ -87,7 +102,7 @@ func testConfig(routes ...snapshot.CompiledRoute) *snapshot.CompiledConfig {
 
 func newTestExecutor(
 	t testing.TB,
-	engine *router.Engine,
+	view *View,
 	transport http.RoundTripper,
 ) *Executor {
 	t.Helper()
@@ -97,10 +112,7 @@ func newTestExecutor(
 		t.Fatalf("NewExecutor failed: %v", err)
 	}
 
-	exec.Publish(&View{
-		Engine:   engine,
-		Limiters: noRateLimits(),
-	})
+	exec.Publish(view)
 
 	return exec
 }
@@ -108,7 +120,7 @@ func newTestExecutor(
 // TestExecutorRateLimitsEachClient checks that the executor identifies the
 // client by the address of the connection's peer, ignoring its port.
 func TestExecutorRateLimitsEachClient(t *testing.T) {
-	engine := buildTestEngine(t, testConfig(snapshot.CompiledRoute{
+	view := buildTestView(t, testConfig(snapshot.CompiledRoute{
 		Name:     "limited",
 		Match:    snapshot.CompiledMatch{PathPrefix: "/", Methods: httpmethod.All},
 		Policies: snapshot.CompiledRoutePolicies{RateLimitID: 0},
@@ -119,10 +131,8 @@ func TestExecutorRateLimitsEachClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewExecutor failed: %v", err)
 	}
-	exec.Publish(&View{
-		Engine:   engine,
-		Limiters: policy.NewRateLimiterSet([]snapshot.CompiledRateLimit{{Limit: 0, Burst: 1}}),
-	})
+	view.Limiters = policy.NewRateLimiterSet([]snapshot.CompiledRateLimit{{Limit: 0, Burst: 1}})
+	exec.Publish(view)
 
 	for _, step := range []struct {
 		remoteAddr string
@@ -197,7 +207,7 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 404 when path has no matching route", func(t *testing.T) {
-		engine := buildTestEngine(t, testConfig(
+		view := buildTestView(t, testConfig(
 			snapshot.CompiledRoute{
 				Name:    "api",
 				Service: 0,
@@ -208,7 +218,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, view, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -227,7 +237,7 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 405 for unsupported incoming HTTP method", func(t *testing.T) {
-		engine := buildTestEngine(t, testConfig(
+		view := buildTestView(t, testConfig(
 			snapshot.CompiledRoute{
 				Name:    "api",
 				Service: 0,
@@ -238,7 +248,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, view, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -262,7 +272,7 @@ func TestExecutor(t *testing.T) {
 			t.Fatal("failed to get method bit for GET")
 		}
 
-		engine := buildTestEngine(t, testConfig(
+		view := buildTestView(t, testConfig(
 			snapshot.CompiledRoute{
 				Name:    "api",
 				Service: 0,
@@ -273,7 +283,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, view, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -292,7 +302,7 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 404 when method matches but headers do not", func(t *testing.T) {
-		engine := buildTestEngine(t, testConfig(
+		view := buildTestView(t, testConfig(
 			snapshot.CompiledRoute{
 				Name:    "api",
 				Service: 0,
@@ -309,7 +319,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, view, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("should not be called")
 		}))
 
@@ -329,7 +339,7 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("returns 502 when upstream call fails", func(t *testing.T) {
-		engine := buildTestEngine(t, testConfig(
+		view := buildTestView(t, testConfig(
 			snapshot.CompiledRoute{
 				Name:    "api",
 				Service: 0,
@@ -340,7 +350,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, view, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("dial failure")
 		}))
 
@@ -359,7 +369,7 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("preserves query parameters when building upstream target", func(t *testing.T) {
-		engine := buildTestEngine(t, testConfig(
+		view := buildTestView(t, testConfig(
 			snapshot.CompiledRoute{
 				Name:    "api",
 				Service: 0,
@@ -372,7 +382,7 @@ func TestExecutor(t *testing.T) {
 
 		var gotURL string
 
-		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, view, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			gotURL = r.URL.String()
 
 			return &http.Response{
@@ -410,7 +420,7 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("proxies response for first matching route", func(t *testing.T) {
-		engine := buildTestEngine(t, testConfig(
+		view := buildTestView(t, testConfig(
 			snapshot.CompiledRoute{
 				Name:    "restricted",
 				Service: 1,
@@ -439,7 +449,7 @@ func TestExecutor(t *testing.T) {
 		var gotURL string
 		var gotBody string
 
-		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, view, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			gotMethod = r.Method
 			gotURL = r.URL.String()
 
@@ -503,7 +513,7 @@ func TestExecutor(t *testing.T) {
 	})
 
 	t.Run("strips hop-by-hop headers from upstream response", func(t *testing.T) {
-		engine := buildTestEngine(t, testConfig(
+		view := buildTestView(t, testConfig(
 			snapshot.CompiledRoute{
 				Name:    "api",
 				Service: 0,
@@ -514,7 +524,7 @@ func TestExecutor(t *testing.T) {
 			},
 		))
 
-		exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		exec := newTestExecutor(t, view, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			h := make(http.Header)
 			h.Set("Connection", "close")
 			h.Set("Transfer-Encoding", "chunked")
@@ -550,7 +560,7 @@ func TestExecutor(t *testing.T) {
 }
 
 func TestExecutorRoutesAndForwardsCanonicalPath(t *testing.T) {
-	engine := buildTestEngine(t, testConfig(
+	view := buildTestView(t, testConfig(
 		snapshot.CompiledRoute{
 			Name:    "public",
 			Service: 0,
@@ -578,7 +588,7 @@ func TestExecutorRoutesAndForwardsCanonicalPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.target, func(t *testing.T) {
 			var gotURL string
-			exec := newTestExecutor(t, engine, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			exec := newTestExecutor(t, view, roundTripFunc(func(r *http.Request) (*http.Response, error) {
 				gotURL = r.URL.String()
 				return &http.Response{
 					StatusCode: http.StatusOK,
@@ -641,12 +651,12 @@ func TestExecutorMapsUpstreamFailures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			engine := buildTestEngine(t, testConfig(snapshot.CompiledRoute{
+			view := buildTestView(t, testConfig(snapshot.CompiledRoute{
 				Name:     "api",
 				Match:    snapshot.CompiledMatch{PathPrefix: "/api", Methods: httpmethod.All},
 				Policies: snapshot.CompiledRoutePolicies{RateLimitID: snapshot.NoRateLimit, Timeout: tt.timeout},
 			}))
-			exec := newTestExecutor(t, engine, tt.roundTrip)
+			exec := newTestExecutor(t, view, tt.roundTrip)
 
 			rec := httptest.NewRecorder()
 			exec.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api", nil))

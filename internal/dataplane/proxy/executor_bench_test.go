@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/HAL-X9/aegis/internal/dataplane/router"
 	"github.com/HAL-X9/aegis/internal/httpmethod"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
@@ -150,15 +149,15 @@ func (t *benchmarkTransport) RoundTrip(req *http.Request) (*http.Response, error
 	return &t.response.response, nil
 }
 
-func buildProxyBenchEngine(tb testing.TB) *router.Engine {
+func buildProxyBenchView(tb testing.TB) *View {
 	tb.Helper()
 
 	cfg := &snapshot.CompiledConfig{
 		Services: snapshot.CompiledServices{
 			Items: []snapshot.CompiledService{
 				{
-					Name:     "profile",
-					Upstream: testURL("http://upstream.internal:8080"),
+					Name:    "profile",
+					Targets: targets("http://upstream.internal:8080"),
 				},
 			},
 		},
@@ -174,23 +173,23 @@ func buildProxyBenchEngine(tb testing.TB) *router.Engine {
 		},
 	}
 
-	engine, err := newTestEngine(cfg)
+	view, err := newTestView(cfg)
 	if err != nil {
-		tb.Fatalf("newTestEngine: %v", err)
+		tb.Fatalf("newTestView: %v", err)
 	}
 
-	return engine
+	return view
 }
 
-func buildProxyBenchEngineWithPolicy(tb testing.TB) *router.Engine {
+func buildProxyBenchViewWithPolicy(tb testing.TB) *View {
 	tb.Helper()
 
 	cfg := &snapshot.CompiledConfig{
 		Services: snapshot.CompiledServices{
 			Items: []snapshot.CompiledService{
 				{
-					Name:     "profile",
-					Upstream: testURL("http://upstream.internal:8080"),
+					Name:    "profile",
+					Targets: targets("http://upstream.internal:8080"),
 				},
 			},
 		},
@@ -242,12 +241,12 @@ func buildProxyBenchEngineWithPolicy(tb testing.TB) *router.Engine {
 		},
 	}
 
-	engine, err := newTestEngine(cfg)
+	view, err := newTestView(cfg)
 	if err != nil {
-		tb.Fatalf("newTestEngine: %v", err)
+		tb.Fatalf("newTestView: %v", err)
 	}
 
-	return engine
+	return view
 }
 
 // buildProxyBenchRequest returns a request with a typical header set.
@@ -286,7 +285,7 @@ func newBenchmarkWriter() *benchmarkResponseWriter {
 //
 // There is no real network I/O.
 func BenchmarkProxyServeHTTP(b *testing.B) {
-	engine := buildProxyBenchEngine(b)
+	view := buildProxyBenchView(b)
 
 	transport := newBenchmarkTransport(
 		http.Header{
@@ -296,7 +295,7 @@ func BenchmarkProxyServeHTTP(b *testing.B) {
 		[]byte("hello"),
 	)
 
-	executor := newBenchExecutor(b, engine, transport)
+	executor := newBenchExecutor(b, view, transport)
 
 	req := buildProxyBenchRequest()
 	w := newBenchmarkWriter()
@@ -310,14 +309,14 @@ func BenchmarkProxyServeHTTP(b *testing.B) {
 // BenchmarkProxyServeHTTP_EmptyHeaders measures the common case with a
 // minimal incoming request.
 func BenchmarkProxyServeHTTP_EmptyHeaders(b *testing.B) {
-	engine := buildProxyBenchEngine(b)
+	view := buildProxyBenchView(b)
 
 	transport := newBenchmarkTransport(
 		http.Header{},
 		[]byte("hello"),
 	)
 
-	executor := newBenchExecutor(b, engine, transport)
+	executor := newBenchExecutor(b, view, transport)
 
 	req := httptest.NewRequest(http.MethodGet, "http://gateway.local/api/v1/profile", nil)
 	w := newBenchmarkWriter()
@@ -331,14 +330,14 @@ func BenchmarkProxyServeHTTP_EmptyHeaders(b *testing.B) {
 // BenchmarkProxyServeHTTP_RealisticHeaders measures request processing with
 // a moderately realistic HTTP header set.
 func BenchmarkProxyServeHTTP_RealisticHeaders(b *testing.B) {
-	engine := buildProxyBenchEngine(b)
+	view := buildProxyBenchView(b)
 
 	transport := newBenchmarkTransport(
 		http.Header{},
 		[]byte("hello"),
 	)
 
-	executor := newBenchExecutor(b, engine, transport)
+	executor := newBenchExecutor(b, view, transport)
 
 	req := buildProxyBenchRequest()
 	for j := range 20 {
@@ -355,7 +354,7 @@ func BenchmarkProxyServeHTTP_RealisticHeaders(b *testing.B) {
 // BenchmarkProxyServeHTTP_WithHeaderPolicy measures the same path with
 // request and response header policies enabled.
 func BenchmarkProxyServeHTTP_WithHeaderPolicy(b *testing.B) {
-	engine := buildProxyBenchEngineWithPolicy(b)
+	view := buildProxyBenchViewWithPolicy(b)
 
 	transport := newBenchmarkTransport(
 		http.Header{
@@ -364,7 +363,7 @@ func BenchmarkProxyServeHTTP_WithHeaderPolicy(b *testing.B) {
 		[]byte("hello"),
 	)
 
-	executor := newBenchExecutor(b, engine, transport)
+	executor := newBenchExecutor(b, view, transport)
 
 	req := buildProxyBenchRequest()
 	req.Header.Set("X-Forwarded-For", "203.0.113.1")
@@ -380,7 +379,7 @@ func BenchmarkProxyServeHTTP_WithHeaderPolicy(b *testing.B) {
 // Each worker owns its transport and response writer, whose header maps
 // are written by ServeHTTP, and its request.
 func BenchmarkProxyServeHTTPParallel(b *testing.B) {
-	engine := buildProxyBenchEngine(b)
+	view := buildProxyBenchView(b)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -393,7 +392,7 @@ func BenchmarkProxyServeHTTPParallel(b *testing.B) {
 			[]byte("hello"),
 		)
 
-		executor := newBenchExecutor(b, engine, transport)
+		executor := newBenchExecutor(b, view, transport)
 		req := buildProxyBenchRequest()
 		w := newBenchmarkWriter()
 
@@ -415,12 +414,12 @@ func BenchmarkProxyServeHTTP_RealTransport(b *testing.B) {
 	}))
 	defer upstream.Close()
 
-	engine := buildProxyBenchEngineWithUpstream(b, upstream.URL)
+	view := buildProxyBenchViewWithUpstream(b, upstream.URL)
 
 	transport := &http.Transport{}
 	defer transport.CloseIdleConnections()
 
-	executor := newBenchExecutor(b, engine, transport)
+	executor := newBenchExecutor(b, view, transport)
 	req := buildProxyBenchRequest()
 	w := newBenchmarkWriter()
 
@@ -430,18 +429,18 @@ func BenchmarkProxyServeHTTP_RealTransport(b *testing.B) {
 	}
 }
 
-func buildProxyBenchEngineWithUpstream(
+func buildProxyBenchViewWithUpstream(
 	tb testing.TB,
 	upstreamURL string,
-) *router.Engine {
+) *View {
 	tb.Helper()
 
 	cfg := &snapshot.CompiledConfig{
 		Services: snapshot.CompiledServices{
 			Items: []snapshot.CompiledService{
 				{
-					Name:     "profile",
-					Upstream: testURL(upstreamURL),
+					Name:    "profile",
+					Targets: targets(upstreamURL),
 				},
 			},
 		},
@@ -457,10 +456,10 @@ func buildProxyBenchEngineWithUpstream(
 		},
 	}
 
-	engine, err := newTestEngine(cfg)
+	view, err := newTestView(cfg)
 	if err != nil {
-		tb.Fatalf("newTestEngine: %v", err)
+		tb.Fatalf("newTestView: %v", err)
 	}
 
-	return engine
+	return view
 }

@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/HAL-X9/aegis/internal/dataplane/router"
 	"github.com/HAL-X9/aegis/internal/httpmethod"
 	"github.com/HAL-X9/aegis/internal/snapshot"
 )
@@ -34,7 +33,7 @@ import (
 // Executor construction and View publication are intentionally outside the
 // timed benchmark path. ServeHTTP only observes the atomically published
 // View during request processing.
-func newBenchExecutor(tb testing.TB, engine *router.Engine, transport http.RoundTripper) *Executor {
+func newBenchExecutor(tb testing.TB, view *View, transport http.RoundTripper) *Executor {
 	tb.Helper()
 
 	executor, err := NewExecutor(transport, nil)
@@ -42,10 +41,7 @@ func newBenchExecutor(tb testing.TB, engine *router.Engine, transport http.Round
 		tb.Fatalf("NewExecutor: %v", err)
 	}
 
-	executor.Publish(&View{
-		Engine:   engine,
-		Limiters: noRateLimits(),
-	})
+	executor.Publish(view)
 
 	return executor
 }
@@ -99,18 +95,18 @@ func BenchmarkRoundTripWarm(b *testing.B) {
 	}
 }
 
-// buildE2EBenchEngine mirrors buildProxyBenchEngine but points the compiled
+// buildE2EBenchView mirrors buildProxyBenchView but points the compiled
 // upstream at a real local httptest.Server instead of a fake host, so the
 // request can actually be proxied end-to-end.
-func buildE2EBenchEngine(tb testing.TB, upstreamURL string) *router.Engine {
+func buildE2EBenchView(tb testing.TB, upstreamURL string) *View {
 	tb.Helper()
 
 	cfg := &snapshot.CompiledConfig{
 		Services: snapshot.CompiledServices{
 			Items: []snapshot.CompiledService{
 				{
-					Name:     "profile",
-					Upstream: testURL(upstreamURL),
+					Name:    "profile",
+					Targets: targets(upstreamURL),
 				},
 			},
 		},
@@ -126,12 +122,12 @@ func buildE2EBenchEngine(tb testing.TB, upstreamURL string) *router.Engine {
 		},
 	}
 
-	engine, err := newTestEngine(cfg)
+	view, err := newTestView(cfg)
 	if err != nil {
-		tb.Fatalf("newTestEngine: %v", err)
+		tb.Fatalf("newTestView: %v", err)
 	}
 
-	return engine
+	return view
 }
 
 // BenchmarkFullProxyE2E measures real client -> gateway listener ->
@@ -143,7 +139,7 @@ func BenchmarkFullProxyE2E(b *testing.B) {
 	}))
 	defer upstream.Close()
 
-	engine := buildE2EBenchEngine(b, upstream.URL)
+	view := buildE2EBenchView(b, upstream.URL)
 
 	transport := &http.Transport{
 		MaxIdleConnsPerHost: 100,
@@ -151,7 +147,7 @@ func BenchmarkFullProxyE2E(b *testing.B) {
 	}
 	defer transport.CloseIdleConnections()
 
-	executor := newBenchExecutor(b, engine, transport)
+	executor := newBenchExecutor(b, view, transport)
 
 	gw := httptest.NewServer(executor)
 	defer gw.Close()

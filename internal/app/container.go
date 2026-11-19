@@ -10,6 +10,7 @@ import (
 	"github.com/HAL-X9/aegis/internal/config"
 	"github.com/HAL-X9/aegis/internal/controlplane/pipeline"
 	"github.com/HAL-X9/aegis/internal/controlplane/validate"
+	"github.com/HAL-X9/aegis/internal/dataplane/balance"
 	"github.com/HAL-X9/aegis/internal/dataplane/policy"
 	"github.com/HAL-X9/aegis/internal/dataplane/proxy"
 	"github.com/HAL-X9/aegis/internal/dataplane/router"
@@ -78,6 +79,7 @@ func Bootstrap(cfg *config.Runtime, manifest validate.Validated) (*Dependencies,
 	executor.Publish(&proxy.View{
 		Engine:   engine,
 		Limiters: rateLimiters,
+		Balancer: balance.New(compiled.Services),
 	})
 
 	healthSvc := health.NewHealth()

@@ -85,7 +85,7 @@ func TestExecutorAnswersEveryFailureWithItsReason(t *testing.T) {
 func failureTestView(t *testing.T) *View {
 	t.Helper()
 
-	engine := buildTestEngine(t, testConfig(
+	view := buildTestView(t, testConfig(
 		snapshot.CompiledRoute{
 			Name:     "api",
 			Match:    snapshot.CompiledMatch{PathPrefix: "/api", Methods: httpmethod.GET},
@@ -98,8 +98,6 @@ func failureTestView(t *testing.T) *View {
 		},
 	))
 
-	return &View{
-		Engine:   engine,
-		Limiters: policy.NewRateLimiterSet([]snapshot.CompiledRateLimit{{Limit: 0, Burst: 0}}),
-	}
+	view.Limiters = policy.NewRateLimiterSet([]snapshot.CompiledRateLimit{{Limit: 0, Burst: 0}})
+	return view
 }

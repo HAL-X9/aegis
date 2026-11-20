@@ -18,8 +18,6 @@ type Metrics struct {
 	// HTTPErrorsTotal counts the error responses the gateway produces itself;
 	// an error status relayed from an upstream is not counted.
 	HTTPErrorsTotal *prometheus.CounterVec
-	// HTTPActiveRequests is registered but never updated, so it always reads 0.
-	HTTPActiveRequests prometheus.Gauge
 }
 
 // NewMetrics creates the collectors and registers them with reg. Registering
@@ -64,19 +62,11 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			},
 			[]string{"reason"},
 		),
-		HTTPActiveRequests: prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Namespace: "aegis",
-				Name:      "http_active_requests",
-				Help:      "Current number of active HTTP requests.",
-			},
-		),
 	}
 	reg.MustRegister(
 		m.HTTPRequestTotal,
 		m.HTTPRequestDuration,
 		m.HTTPErrorsTotal,
-		m.HTTPActiveRequests,
 	)
 
 	return m

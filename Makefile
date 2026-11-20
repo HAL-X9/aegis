@@ -33,9 +33,17 @@ fmt: ## Format Go source files
 vet: ## Run go vet
 	go vet ./...
 
+.PHONY: tidy
+tidy: ## Fail if go.mod or go.sum is not tidy
+	go mod tidy -diff
+
 .PHONY: lint
 lint: ## Run golangci-lint
 	golangci-lint run ./...
+
+.PHONY: vuln
+vuln: ## Scan dependencies for known vulnerabilities
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 .PHONY: test
 test: ## Run tests
@@ -62,6 +70,9 @@ fuzz: ## Fuzz every target for FUZZTIME each (default 30s)
 		echo "==> $$name ($(FUZZTIME))"; \
 		go test "$$pkg" -run '^$$' -fuzz "^$$name$$" -fuzztime $(FUZZTIME) || exit 1; \
 	done
+
+.PHONY: check
+check: fmt vet tidy lint test-race ## Run every local check
 
 .PHONY: coverage
 coverage: ## Run tests with coverage

@@ -141,11 +141,6 @@ func retarget(req *http.Request, target *url.URL) *http.Request {
 // internal/dataplane/retry); each retry goes to the next target. The rate
 // limiter is consulted once, before the first attempt. The request body is
 // forwarded as-is to the upstream service.
-//
-// Once a route is matched, ServeHTTP reports its name via routelabel, so that
-// a later 429, 502 or 504 can still be attributed to the route. Requests that
-// never reach a route match (503, 400, 404, 405) are reported as "unmatched".
-// The report is currently discarded: see the package comment of routelabel.
 func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	view := executor.view.Load()
 	if view == nil {
@@ -178,16 +173,6 @@ func (executor *Executor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Report the matched route to the metrics middleware, if present, so
-	// even a subsequent 429/502 below still gets labeled with the route
-	// that produced it rather than falling back to "unmatched".
-	//
-	// matchedRoute.Name is the route's stable, config-provided identifier
-	// (docs/policies.md, `routes: - name: example`) — that's a contract
-	// owned by snapshot.CompiledRoute, not an inference made here. An
-	// empty Name would mean that contract was violated upstream (loader
-	// or compiler bug), so metrics get an explicit sentinel instead of a
-	// silently blank route label.
 	routeLabel := matchedRoute.Name
 	if routeLabel == "" {
 		routeLabel = "unnamed-route"
